@@ -441,7 +441,7 @@ namespace ExplorerHistoryTracker
         /// </summary>
         private async Task ResetWakingUpAsync()
         {
-            await Task.Delay(1500);
+            await Task.Delay(200);
             IsWakingUp = false;
         }
 

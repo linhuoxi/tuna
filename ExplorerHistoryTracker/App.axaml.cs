@@ -134,7 +134,7 @@ namespace ExplorerHistoryTracker
                                 
                                 // Reset the waking up lock after a short delay so normal Deactivated works again.
                                 // Post to UI thread to avoid data-race on IsWakingUp (read by OnDeactivated on UI thread).
-                                Task.Delay(500).ContinueWith(_ => Dispatcher.UIThread.Post(() => window.IsWakingUp = false));
+                                Task.Delay(200).ContinueWith(_ => Dispatcher.UIThread.Post(() => window.IsWakingUp = false));
                             }
                             catch (Exception ex)
                             {
@@ -159,7 +159,7 @@ namespace ExplorerHistoryTracker
                                 if (window.DataContext is MainViewModel vmRestore) vmRestore.IsTopmost = originalTopmost;
                                 window.Topmost = originalTopmost;
                                 
-                                Task.Delay(500).ContinueWith(_ => Dispatcher.UIThread.Post(() => window.IsWakingUp = false));
+                                Task.Delay(200).ContinueWith(_ => Dispatcher.UIThread.Post(() => window.IsWakingUp = false));
                                 File.AppendAllText("trace_log.txt", $"{DateTime.Now}: Recovery successful.\n");
                             }
                         }

@@ -380,7 +380,24 @@ namespace ExplorerHistoryTracker
                     if (newY + physicalHeight > workArea.Y + workArea.Height) newY = workArea.Y + workArea.Height - physicalHeight;
                 }
 
-                Position = new PixelPoint(newX, newY);
+                var targetPos = new PixelPoint(newX, newY);
+                Position = targetPos;
+
+                // Force reposition loop to bypass any OS / Avalonia window position race conditions
+                Task.Run(async () =>
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        await Task.Delay(50 + i * 50); // 50ms, 100ms, 150ms, 200ms, 250ms
+                        await Dispatcher.UIThread.InvokeAsync(() =>
+                        {
+                            if (IsVisible && Position != targetPos)
+                            {
+                                Position = targetPos;
+                            }
+                        });
+                    }
+                });
             }
         }
 

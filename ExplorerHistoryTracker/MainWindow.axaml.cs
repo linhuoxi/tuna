@@ -528,5 +528,18 @@ namespace ExplorerHistoryTracker
                 // Best-effort
             }
         }
+
+        private void GitHubButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string url = "https://github.com/linhuoxi/tuna";
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch
+            {
+                // Best-effort
+            }
+        }
     }
 }

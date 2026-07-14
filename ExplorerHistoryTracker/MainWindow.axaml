@@ -1352,6 +1352,15 @@
                                 </Grid>
                                 <Border Classes="softDivider" />
                                 
+                                <!-- 项目源码 -->
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,2">
+                                    <TextBlock Text="项目源码" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Click="GitHubButton_Click" Background="Transparent" BorderThickness="0" Padding="0" Cursor="Hand" ToolTip.Tip="点击访问 GitHub 仓库">
+                                        <TextBlock Text="github.com/linhuoxi/tuna" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource AccentBrush}" TextDecorations="Underline"/>
+                                    </Button>
+                                </Grid>
+                                <Border Classes="softDivider" />
+                                
                                 <!-- 开源协议 -->
                                 <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,2">
                                     <TextBlock Text="开源协议" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>

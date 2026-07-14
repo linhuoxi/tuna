@@ -358,6 +358,12 @@ namespace ExplorerHistoryTracker
 
         public void RepositionAtCursor()
         {
+            try
+            {
+                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: RepositionAtCursor entered. IsVisible={IsVisible}, WindowState={WindowState}\n");
+            }
+            catch {}
+
             if (GetCursorPos(out POINT point))
             {
                 double scaling = RenderScaling;
@@ -381,7 +387,14 @@ namespace ExplorerHistoryTracker
                 }
 
                 var targetPos = new PixelPoint(newX, newY);
+                var oldPos = Position;
                 Position = targetPos;
+
+                try
+                {
+                    File.AppendAllText("trace_log.txt", $"{DateTime.Now}: RepositionAtCursor: Cursor={point.X},{point.Y}, Target={newX},{newY}, Old={oldPos.X},{oldPos.Y}, Actual={Position.X},{Position.Y}\n");
+                }
+                catch {}
 
                 // Force reposition loop to bypass any OS / Avalonia window position race conditions
                 Task.Run(async () =>
@@ -393,7 +406,13 @@ namespace ExplorerHistoryTracker
                         {
                             if (IsVisible && Position != targetPos)
                             {
+                                var prevPos = Position;
                                 Position = targetPos;
+                                try
+                                {
+                                    File.AppendAllText("trace_log.txt", $"{DateTime.Now}: RepositionAtCursor Force Loop {i}: corrected position from {prevPos.X},{prevPos.Y} to {Position.X},{Position.Y}\n");
+                                }
+                                catch {}
                             }
                         });
                     }

@@ -19,3 +19,6 @@ App_PublishOutput/
 *.tmp
 *.bak
 *.cache
+stderr.txt
+stdout.txt
+

@@ -1,0 +1,21 @@
+## Visual Studio / .NET Core
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+.vscode/
+
+## Build Release Outputs
+软件发布/
+PublishOutput/
+App_PublishOutput/
+
+## Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.cache

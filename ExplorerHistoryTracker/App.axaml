@@ -1,0 +1,184 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ExplorerHistoryTracker.App"
+             RequestedThemeVariant="Default">
+
+    <Application.Styles>
+        <FluentTheme />
+        
+        <!-- Force ToggleSwitch checked background to accent color -->
+        <Style Selector="ToggleSwitch:checked /template/ Border#SwitchKnobBounds">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+        </Style>
+        <Style Selector="ToggleSwitch:checked:pointerover /template/ Border#SwitchKnobBounds">
+            <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}"/>
+        </Style>
+        
+        <!-- Force RadioButton checked outer ellipse to accent color -->
+        <Style Selector="RadioButton:checked /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Fill" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Stroke" Value="{DynamicResource AccentBrush}"/>
+        </Style>
+        <Style Selector="RadioButton:checked:pointerover /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Fill" Value="{DynamicResource AccentHoverBrush}"/>
+            <Setter Property="Stroke" Value="{DynamicResource AccentHoverBrush}"/>
+        </Style>
+    </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Global Overrides for ScrollBar Sizes in FluentTheme -->
+            <x:Double x:Key="ScrollBarThickness">6</x:Double>
+            <x:Double x:Key="ScrollBarThumbThickness">4</x:Double>
+
+            <ResourceDictionary.ThemeDictionaries>
+
+                <!-- ==================== LIGHT THEME ==================== -->
+                <!-- Palette: #012AAC (deep blue), #EAE8E9 (warm gray), #D4DFFA (light blue), #FFFFFF (white) -->
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="SystemAccentColor">#012AAC</Color>
+                    
+                    <!-- Core palette REDESIGN -->
+                    <!-- Clean white/gray integrated header -->
+                    <Color x:Key="HeaderBgColor">#F3F5F8</Color>
+                    <Color x:Key="HeaderFgColor">#141620</Color>
+                    
+                    <!-- Clean soft app background -->
+                    <Color x:Key="BgPrimaryColor">#F3F5F8</Color>
+                    <!-- Used for Segmented Control Background -->
+                    <Color x:Key="BgSecondaryColor">#E6E8EA</Color>
+                    <Color x:Key="SearchBgColor">#E6E8EA</Color>
+                    
+                    <!-- Cards -->
+                    <Color x:Key="BgCardColor">#FFFFFF</Color>
+                    <Color x:Key="BgCardHoverColor">#F7F8FA</Color>
+                    
+                    <Color x:Key="AccentColor">#012AAC</Color>
+                    <Color x:Key="AccentHoverColor">#011E7A</Color>
+                    
+                    <Color x:Key="TextPrimaryColor">#141620</Color>
+                    <Color x:Key="TextSecondaryColor">#5E6278</Color>
+                    
+                    <Color x:Key="BorderColor">#EAE8E9</Color>
+                    <Color x:Key="DangerColor">#E74C3C</Color>
+                    <Color x:Key="PinColor">#012AAC</Color>
+
+                    <!-- Semi-transparent overlay colors -->
+                    <Color x:Key="TabCheckedBgColor">#FFFFFF</Color>
+                    <Color x:Key="TabHoverBgColor">#0D000000</Color>
+                    <Color x:Key="ActionHoverBgColor">#EAE8E9</Color>
+                    <Color x:Key="MenuItemHoverBgColor">#F3F5F8</Color>
+                    <Color x:Key="DangerHoverBgColor">#1AE74C3C</Color>
+                    <Color x:Key="DialogOverlayColor">#80000000</Color>
+                    <Color x:Key="ContextMenuBgColor">#FFFFFF</Color>
+                    <Color x:Key="ModernButtonBgColor">#012AAC</Color>
+                    <Color x:Key="ModernButtonFgColor">#FFFFFF</Color>
+
+                    <!-- Brushes -->
+                    <SolidColorBrush x:Key="HeaderBgBrush" Color="{StaticResource HeaderBgColor}"/>
+                    <SolidColorBrush x:Key="HeaderFgBrush" Color="{StaticResource HeaderFgColor}"/>
+                    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}"/>
+                    <SolidColorBrush x:Key="BgPrimaryBrush" Color="{StaticResource BgPrimaryColor}"/>
+                    <SolidColorBrush x:Key="BgSecondaryBrush" Color="{StaticResource BgSecondaryColor}"/>
+                    <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCardColor}"/>
+                    <SolidColorBrush x:Key="BgCardHoverBrush" Color="{StaticResource BgCardHoverColor}"/>
+                    <SolidColorBrush x:Key="SearchBgBrush" Color="{StaticResource SearchBgColor}"/>
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
+                    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+                    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+                    <SolidColorBrush x:Key="PinBrush" Color="{StaticResource PinColor}"/>
+                    <SolidColorBrush x:Key="TabCheckedBgBrush" Color="{StaticResource TabCheckedBgColor}"/>
+                    <SolidColorBrush x:Key="TabHoverBgBrush" Color="{StaticResource TabHoverBgColor}"/>
+                    <SolidColorBrush x:Key="ActionHoverBgBrush" Color="{StaticResource ActionHoverBgColor}"/>
+                    <SolidColorBrush x:Key="MenuItemHoverBgBrush" Color="{StaticResource MenuItemHoverBgColor}"/>
+                    <SolidColorBrush x:Key="DangerHoverBgBrush" Color="{StaticResource DangerHoverBgColor}"/>
+                    <SolidColorBrush x:Key="DialogOverlayBrush" Color="{StaticResource DialogOverlayColor}"/>
+                    <SolidColorBrush x:Key="ContextMenuBgBrush" Color="{StaticResource ContextMenuBgColor}"/>
+                    <SolidColorBrush x:Key="ModernButtonBgBrush" Color="{StaticResource ModernButtonBgColor}"/>
+                    <SolidColorBrush x:Key="ModernButtonFgBrush" Color="{StaticResource ModernButtonFgColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{StaticResource AccentHoverColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{StaticResource AccentHoverColor}"/>
+                    <SolidColorBrush x:Key="RadioButtonCheckGlyphFill" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="RadioButtonCheckGlyphStrokeChecked" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="SelectedBgBrush" Color="#1A012AAC"/>
+                </ResourceDictionary>
+
+                <!-- ==================== DARK THEME ==================== -->
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="SystemAccentColor">#3572EF</Color>
+                    
+                    <!-- Dark mode Header uses a dark sophisticated blue-gray -->
+                    <Color x:Key="HeaderBgColor">#11151C</Color>
+                    <Color x:Key="HeaderFgColor">#FFFFFF</Color>
+ 
+                    <!-- Core palette REDESIGN -->
+                    <Color x:Key="BgPrimaryColor">#11151C</Color>
+                    <Color x:Key="BgSecondaryColor">#161B22</Color>
+                    <Color x:Key="BgCardColor">#21262D</Color>
+                    <Color x:Key="BgCardHoverColor">#282E37</Color>
+                    <Color x:Key="SearchBgColor">#1B1F27</Color>
+                    
+                    <Color x:Key="AccentColor">#3572EF</Color>
+                    <Color x:Key="AccentHoverColor">#5E92FF</Color>
+                    
+                    <Color x:Key="TextPrimaryColor">#FFFFFF</Color>
+                    <Color x:Key="TextSecondaryColor">#A0AEC0</Color>
+                    
+                    <Color x:Key="BorderColor">#2D3748</Color>
+                    <Color x:Key="DangerColor">#FC8181</Color>
+                    <Color x:Key="PinColor">#3572EF</Color>
+ 
+                    <!-- Semi-transparent overlay colors -->
+                    <Color x:Key="TabCheckedBgColor">#2D3748</Color>
+                    <Color x:Key="TabHoverBgColor">#1AFFFFFF</Color>
+                    <Color x:Key="ActionHoverBgColor">#333572EF</Color>
+                    <Color x:Key="MenuItemHoverBgColor">#333572EF</Color>
+                    <Color x:Key="DangerHoverBgColor">#33FC8181</Color>
+                    <Color x:Key="DialogOverlayColor">#B3000000</Color>
+                    <Color x:Key="ContextMenuBgColor">#21262D</Color>
+                    <Color x:Key="ModernButtonBgColor">#3572EF</Color>
+                    <Color x:Key="ModernButtonFgColor">#FFFFFF</Color>
+ 
+                    <!-- Brushes -->
+                    <SolidColorBrush x:Key="HeaderBgBrush" Color="{StaticResource HeaderBgColor}"/>
+                    <SolidColorBrush x:Key="HeaderFgBrush" Color="{StaticResource HeaderFgColor}"/>
+                    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}"/>
+                    <SolidColorBrush x:Key="BgPrimaryBrush" Color="{StaticResource BgPrimaryColor}"/>
+                    <SolidColorBrush x:Key="BgSecondaryBrush" Color="{StaticResource BgSecondaryColor}"/>
+                    <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCardColor}"/>
+                    <SolidColorBrush x:Key="BgCardHoverBrush" Color="{StaticResource BgCardHoverColor}"/>
+                    <SolidColorBrush x:Key="SearchBgBrush" Color="{StaticResource SearchBgColor}"/>
+                    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
+                    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
+                    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+                    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+                    <SolidColorBrush x:Key="PinBrush" Color="{StaticResource PinColor}"/>
+                    <SolidColorBrush x:Key="TabCheckedBgBrush" Color="{StaticResource TabCheckedBgColor}"/>
+                    <SolidColorBrush x:Key="TabHoverBgBrush" Color="{StaticResource TabHoverBgColor}"/>
+                    <SolidColorBrush x:Key="ActionHoverBgBrush" Color="{StaticResource ActionHoverBgColor}"/>
+                    <SolidColorBrush x:Key="MenuItemHoverBgBrush" Color="{StaticResource MenuItemHoverBgColor}"/>
+                    <SolidColorBrush x:Key="DangerHoverBgBrush" Color="{StaticResource DangerHoverBgColor}"/>
+                    <SolidColorBrush x:Key="DialogOverlayBrush" Color="{StaticResource DialogOverlayColor}"/>
+                    <SolidColorBrush x:Key="ContextMenuBgBrush" Color="{StaticResource ContextMenuBgColor}"/>
+                    <SolidColorBrush x:Key="ModernButtonBgBrush" Color="{StaticResource ModernButtonBgColor}"/>
+                    <SolidColorBrush x:Key="ModernButtonFgBrush" Color="{StaticResource ModernButtonFgColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="{StaticResource AccentHoverColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOn" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="ToggleSwitchStrokeOnPointerOver" Color="{StaticResource AccentHoverColor}"/>
+                    <SolidColorBrush x:Key="RadioButtonCheckGlyphFill" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="RadioButtonCheckGlyphStrokeChecked" Color="{StaticResource AccentColor}"/>
+                    <SolidColorBrush x:Key="SelectedBgBrush" Color="#223572EF"/>
+                </ResourceDictionary>
+
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

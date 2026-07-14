@@ -1,0 +1,12 @@
+<linker>
+  <!-- Preserve all public members of types used in Avalonia data binding -->
+  <assembly fullname="Tuna">
+    <type fullname="ExplorerHistoryTracker.ViewModels.MainViewModel" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.Models.FolderHistoryItem" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.ViewModels.ViewModelBase" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.Services.AppConfig" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.ViewModels.RelayCommand" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.Converters.RelativeTimeConverter" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.Converters.StringEqualsToBooleanConverter" preserve="All" />
+  </assembly>
+</linker>

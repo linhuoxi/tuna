@@ -1,0 +1,104 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <ApplicationIcon>Tuna.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>ExplorerHistoryTracker</RootNamespace>
+    <AssemblyName>Tuna</AssemblyName>
+
+    <!-- Reflection-based bindings (compatible with NativeAOT via DynamicDependency preservation) -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+
+    <!--
+      NativeAOT 发布配置：
+      - PublishAot: 将 C# 编译为 x64 原生机器码，产物为单文件 exe，不含 .NET IL
+      - PublishTrimmed + TrimMode=full: 裁剪未使用代码，大幅缩小体积
+      - IlcOptimizationPreference=Size: 体积优先编译
+      注意: PublishAot 与 PublishSingleFile 互斥，AOT 本身已是单文件原生 exe
+    -->
+    <PublishAot>true</PublishAot>
+    <!-- Enable COM Interop for NativeAOT on Windows -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <RunIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RunIdentifier>
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+
+    <!-- 体积优化：移除不必要运行时特性 -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <DebuggerSupport>false</DebuggerSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <StackTraceSupport>false</StackTraceSupport>
+    <MetricsSupport>false</MetricsSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+
+    <!-- 抑制 NativeAOT 下已确认无害的 trim 警告 -->
+    <NoWarn>IL2104;IL3000;IL2050;IL2055;IL2065;IL2072;IL2075</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.8" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.8" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.8" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.2.8">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Tuna.ico" />
+    <AvaloniaResource Include="Tuna.png" />
+  </ItemGroup>
+
+  <!-- NativeAOT trimmer root: preserve types used in reflection-based data binding -->
+  <ItemGroup>
+    <TrimmerRootDescriptor Include="TrimmerRoots.xml" />
+  </ItemGroup>
+
+  <!--
+    单 exe 发布专用：把 3 个 Avalonia 原生依赖 dll (libSkiaSharp / libHarfBuzzSharp / av_libglesv2)
+    以 gzip 压缩后内嵌到 exe 中。NativeLoader 在启动时释放到 %APPDATA%\ExplorerHistoryTracker\native
+    并预加载，使最终分发产物只剩单个 exe。
+    用 $(EmbedNativeForSingleExe) 开关控制——只有发布脚本传 true 时才触发。
+    @(ReferenceCopyLocalPaths) 由 ResolvePackageAssets 产出，包含所有经 NuGet 拷到输出目录的 native dll。
+  -->
+  <Target Name="EmbedNativeDllsForSingleExe"
+          AfterTargets="ResolveAssemblyReferences"
+          BeforeTargets="CoreCompile"
+          Condition="'$(EmbedNativeForSingleExe)' == 'true'">
+
+    <Message Text="EmbedNativeForSingleExe: 开始压缩并内嵌原生 dll..." Importance="high" />
+
+    <!-- 创建临时目录 -->
+    <MakeDir Directories="$(IntermediateOutputPath)EmbeddedNative" />
+
+    <!-- 把 ReferenceCopyLocalPaths 写入文件，供 PowerShell 读取 -->
+    <WriteLinesToFile File="$(IntermediateOutputPath)refpaths.txt" Lines="@(ReferenceCopyLocalPaths)" Overwrite="true" Encoding="utf-8" />
+
+    <!-- 用 PowerShell 从 NuGet 路径压缩 3 个原生 dll -->
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$ErrorActionPreference='Stop'; $pathsFile='$(IntermediateOutputPath.Replace('\','\\'))refpaths.txt'; $outDir='$(IntermediateOutputPath.Replace('\','\\'))EmbeddedNative'; $lines=Get-Content -Encoding UTF8 $pathsFile; $targets=@('libSkiaSharp.dll','libHarfBuzzSharp.dll','av_libglesv2.dll'); foreach($line in $lines){ if($line -and ($line -match 'runtimes[\\/]win-x64[\\/]native[\\/](libSkiaSharp|libHarfBuzzSharp|av_libglesv2)\.dll$')){ $name=[System.IO.Path]::GetFileName($line); if($targets -contains $name){ $dest=Join-Path $outDir ($name+'.gz'); $bytes=[System.IO.File]::ReadAllBytes($line); $ms=[System.IO.MemoryStream]::new(); $gs=[System.IO.Compression.GZipStream]::new($ms,[System.IO.Compression.CompressionLevel]::Optimal); $gs.Write($bytes,0,$bytes.Length); $gs.Dispose(); [System.IO.File]::WriteAllBytes($dest,$ms.ToArray()); Write-Host ('Compressed: '+$name+' -&gt; '+[math]::Round($ms.Length/1KB,0)+'KB'); } } }&quot;" />
+
+    <!-- 将压缩后的文件作为嵌入资源 -->
+    <ItemGroup>
+      <EmbeddedResource Include="$(IntermediateOutputPath)EmbeddedNative\libSkiaSharp.dll.gz">
+        <LogicalName>ExplorerHistoryTracker.Native.libSkiaSharp.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(IntermediateOutputPath)EmbeddedNative\libHarfBuzzSharp.dll.gz">
+        <LogicalName>ExplorerHistoryTracker.Native.libHarfBuzzSharp.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(IntermediateOutputPath)EmbeddedNative\av_libglesv2.dll.gz">
+        <LogicalName>ExplorerHistoryTracker.Native.av_libglesv2.dll</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+
+    <Message Text="EmbedNativeForSingleExe: 已压缩并内嵌 3 个原生 dll" Importance="high" />
+  </Target>
+
+</Project>

@@ -105,15 +105,16 @@ namespace ExplorerHistoryTracker
                                     desktop.MainWindow = window;
                                     File.AppendAllText("trace_log.txt", $"{DateTime.Now}: Created new window instance.\n");
                                 }
-                                
                                 window.IsWakingUp = true;
-                                window.Show();
-                                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: window.Show() executed.\n");
                                 
                                 if (window.WindowState != WindowState.Normal)
                                     window.WindowState = WindowState.Normal;
                                     
                                 window.RepositionAtCursor();
+                                window.Show();
+                                window.RepositionAtCursor();
+                                Dispatcher.UIThread.Post(() => window.RepositionAtCursor());
+                                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: window.Show() executed.\n");
                                 
                                 // Cache the user's original topmost setting before we mess with it
                                 bool originalTopmost = false;
@@ -144,8 +145,10 @@ namespace ExplorerHistoryTracker
                                 desktop.MainWindow = window;
                                 
                                 window.IsWakingUp = true;
+                                window.RepositionAtCursor();
                                 window.Show();
                                 window.RepositionAtCursor();
+                                Dispatcher.UIThread.Post(() => window.RepositionAtCursor());
                                 
                                 bool originalTopmost = false;
                                 if (window.DataContext is MainViewModel vmOrig) originalTopmost = vmOrig.IsTopmost;

@@ -260,11 +260,13 @@ namespace ExplorerHistoryTracker
                     {
                         try
                         {
+                            RepositionAtCursor();
                             if (!IsVisible)
                             {
                                 Show();
                             }
                             RepositionAtCursor();
+                            Dispatcher.UIThread.Post(() => RepositionAtCursor());
                             ForceActivate();
                         }
                         finally

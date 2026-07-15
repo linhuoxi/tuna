@@ -130,6 +130,36 @@ namespace ExplorerHistoryTracker
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr GetForegroundWindow();
 
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string? lpszWindow);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint WM_SETTEXT = 0x000C;
+        private const int VK_RETURN = 0x0D;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        private const uint GW_HWNDNEXT = 2;
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        private delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumChildWindows(IntPtr hwndParent, EnumChildProc lpEnumFunc, IntPtr lParam);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
@@ -891,10 +921,130 @@ namespace ExplorerHistoryTracker
         {
             if (sender is ListBox listBox && listBox.SelectedItem is FolderHistoryItem item)
             {
+                // Try navigating the active file dialog first
+                IntPtr dialogHwnd = FindActiveFileDialog();
+                if (dialogHwnd != IntPtr.Zero && TryNavigateFileDialog(dialogHwnd, item.Path))
+                {
+                    HideAndCollect();
+                    return;
+                }
+
+                // Fallback to normal behavior
                 if (DataContext is MainViewModel vm)
                 {
                     vm.OpenFolderCommand.Execute(item);
                 }
+            }
+        }
+
+        private IntPtr FindActiveFileDialog()
+        {
+            try
+            {
+                var handle = this.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                if (handle == IntPtr.Zero) return IntPtr.Zero;
+
+                IntPtr nextHwnd = GetWindow(handle, GW_HWNDNEXT);
+                int searchLimit = 30; // Check top 30 windows in Z-order down
+                while (nextHwnd != IntPtr.Zero && searchLimit-- > 0)
+                {
+                    if (IsWindowVisible(nextHwnd))
+                    {
+                        System.Text.StringBuilder className = new System.Text.StringBuilder(256);
+                        if (GetClassName(nextHwnd, className, className.Capacity) > 0)
+                        {
+                            string clsName = className.ToString();
+                            if (clsName == "#32770")
+                            {
+                                // Verify it contains controls characteristic of a file dialog (Edit or ComboBoxEx32)
+                                IntPtr comboBoxEx = FindChildWindow(nextHwnd, "ComboBoxEx32");
+                                IntPtr editHwnd = FindChildWindow(nextHwnd, "Edit");
+                                if (comboBoxEx != IntPtr.Zero || editHwnd != IntPtr.Zero)
+                                {
+                                    return nextHwnd;
+                                }
+                            }
+                        }
+                    }
+                    nextHwnd = GetWindow(nextHwnd, GW_HWNDNEXT);
+                }
+            }
+            catch
+            {
+                // Best-effort
+            }
+            return IntPtr.Zero;
+        }
+
+        private IntPtr FindChildWindow(IntPtr parent, string className)
+        {
+            IntPtr result = IntPtr.Zero;
+            try
+            {
+                EnumChildWindows(parent, (hWnd, lParam) =>
+                {
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
+                    if (GetClassName(hWnd, sb, sb.Capacity) > 0 && sb.ToString() == className)
+                    {
+                        result = hWnd;
+                        return false; // Stop enumeration
+                    }
+                    return true; // Continue enumeration
+                }, IntPtr.Zero);
+            }
+            catch
+            {
+                // Best-effort
+            }
+            return result;
+        }
+
+        private bool TryNavigateFileDialog(IntPtr hwnd, string path)
+        {
+            if (hwnd == IntPtr.Zero) return false;
+
+            try
+            {
+                // 1. Check class name of target window to verify it's a dialog
+                System.Text.StringBuilder className = new System.Text.StringBuilder(256);
+                if (GetClassName(hwnd, className, className.Capacity) == 0) return false;
+
+                if (className.ToString() != "#32770") return false;
+
+                // 2. Locate the Edit control within ComboBoxEx32 -> ComboBox -> Edit
+                IntPtr editHwnd = IntPtr.Zero;
+                IntPtr comboBoxEx = FindChildWindow(hwnd, "ComboBoxEx32");
+                if (comboBoxEx != IntPtr.Zero)
+                {
+                    IntPtr comboBox = FindWindowEx(comboBoxEx, IntPtr.Zero, "ComboBox", null);
+                    if (comboBox != IntPtr.Zero)
+                    {
+                        editHwnd = FindWindowEx(comboBox, IntPtr.Zero, "Edit", null);
+                    }
+                }
+
+                // Fallback: search for any Edit control recursively
+                if (editHwnd == IntPtr.Zero)
+                {
+                    editHwnd = FindChildWindow(hwnd, "Edit");
+                }
+
+                if (editHwnd == IntPtr.Zero) return false;
+
+                // 3. Populate target path
+                SendMessage(editHwnd, WM_SETTEXT, IntPtr.Zero, path);
+
+                // 4. Send Enter key down and up to initiate navigation
+                const uint WM_KEYDOWN = 0x0100;
+                const uint WM_KEYUP = 0x0101;
+                SendMessage(editHwnd, WM_KEYDOWN, new IntPtr(VK_RETURN), IntPtr.Zero);
+                SendMessage(editHwnd, WM_KEYUP, new IntPtr(VK_RETURN), IntPtr.Zero);
+
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

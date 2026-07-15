@@ -1039,16 +1039,19 @@ namespace ExplorerHistoryTracker
 
                 if (editHwnd == IntPtr.Zero) return false;
 
-                // 3. Populate target path
-                SendMessage(editHwnd, WM_SETTEXT, IntPtr.Zero, path);
+                // 3. Populate target path (ensure it ends with a backslash to force folder navigation rather than file saving)
+                string formattedPath = path;
+                if (!formattedPath.EndsWith("\\"))
+                {
+                    formattedPath += "\\";
+                }
+                SendMessage(editHwnd, WM_SETTEXT, IntPtr.Zero, formattedPath);
 
-                // 4. Post Enter key messages to the edit control to initiate navigation asynchronously
+                // 4. Post a single Enter key sequence (keydown and keyup) to the edit control to initiate navigation
                 const uint WM_KEYDOWN = 0x0100;
-                const uint WM_CHAR = 0x0102;
                 const uint WM_KEYUP = 0x0101;
 
                 PostMessage(editHwnd, WM_KEYDOWN, new IntPtr(VK_RETURN), IntPtr.Zero);
-                PostMessage(editHwnd, WM_CHAR, new IntPtr(13), IntPtr.Zero);
                 PostMessage(editHwnd, WM_KEYUP, new IntPtr(VK_RETURN), IntPtr.Zero);
 
                 return true;

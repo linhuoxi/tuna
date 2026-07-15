@@ -154,11 +154,7 @@ namespace ExplorerHistoryTracker
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsWindowVisible(IntPtr hWnd);
 
-        private delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool EnumChildWindows(IntPtr hwndParent, EnumChildProc lpEnumFunc, IntPtr lParam);
+        private const uint GW_CHILD = 5;
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -978,25 +974,37 @@ namespace ExplorerHistoryTracker
 
         private IntPtr FindChildWindow(IntPtr parent, string className)
         {
-            IntPtr result = IntPtr.Zero;
+            if (parent == IntPtr.Zero) return IntPtr.Zero;
+
             try
             {
-                EnumChildWindows(parent, (hWnd, lParam) =>
+                // Get the first child of the parent window
+                IntPtr child = GetWindow(parent, GW_CHILD);
+                while (child != IntPtr.Zero)
                 {
+                    // Check if this child matches the class name
                     System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
-                    if (GetClassName(hWnd, sb, sb.Capacity) > 0 && sb.ToString() == className)
+                    if (GetClassName(child, sb, sb.Capacity) > 0 && sb.ToString() == className)
                     {
-                        result = hWnd;
-                        return false; // Stop enumeration
+                        return child;
                     }
-                    return true; // Continue enumeration
-                }, IntPtr.Zero);
+
+                    // Recursively search this child's descendants
+                    IntPtr descendent = FindChildWindow(child, className);
+                    if (descendent != IntPtr.Zero)
+                    {
+                        return descendent;
+                    }
+
+                    // Move to the next sibling window
+                    child = GetWindow(child, GW_HWNDNEXT);
+                }
             }
             catch
             {
                 // Best-effort
             }
-            return result;
+            return IntPtr.Zero;
         }
 
         private bool TryNavigateFileDialog(IntPtr hwnd, string path)

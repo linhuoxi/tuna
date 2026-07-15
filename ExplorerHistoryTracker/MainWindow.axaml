@@ -10,9 +10,11 @@
         x:DataType="vm:MainViewModel"
         Title="Tuna" 
         Icon="/Tuna.ico"
-        Width="380" Height="550"
+        Width="460" Height="630"
         SystemDecorations="None" 
         Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        TransparencyBackgroundFallback="Transparent"
         WindowStartupLocation="Manual"
         CanResize="True"
         ShowInTaskbar="False"
@@ -658,17 +660,34 @@
             <Setter Property="Height" Value="5"/>
             <Setter Property="MinHeight" Value="5"/>
         </Style>
+        
+        <!-- Window Outer Border Styling (Normal / Hover shadow animation) -->
+        <Style Selector="Border.main-window-border">
+            <Setter Property="BoxShadow" Value="{DynamicResource WindowNormalShadow}"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.25" Easing="CubicEaseOut"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.main-window-border:pointerover">
+            <Setter Property="BoxShadow" Value="{DynamicResource WindowHoverShadow}"/>
+        </Style>
     </Window.Styles>
 
-    <!-- Main Container with Shadow and Rounded Corner -->
-    <Border CornerRadius="12" 
-            Background="{DynamicResource BgPrimaryBrush}" 
-            BorderBrush="{DynamicResource BorderBrush}" 
-            BorderThickness="1" 
-            ClipToBounds="True"
-            BoxShadow="0 4 18 0 #1F000000">
-
-        <Grid>
+    <Grid ClipToBounds="False">
+        <!-- Main Container with Shadow and Rounded Corner -->
+        <Border Margin="40"
+                CornerRadius="12" 
+                Background="Transparent"
+                Classes="main-window-border"
+                ClipToBounds="False">
+            <Border CornerRadius="12" 
+                    Background="{DynamicResource BgPrimaryBrush}" 
+                    BorderBrush="{DynamicResource BorderBrush}" 
+                    BorderThickness="1" 
+                    ClipToBounds="True">
+                <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="36"/>   <!-- Custom Title Bar -->
                 <RowDefinition Height="Auto"/> <!-- Search & Control -->
@@ -1407,16 +1426,19 @@
                 </Border>
             </Grid>
 
-            <!-- ================= RESIZE BORDERS & CORNERS ================= -->
-            <Border Grid.Row="0" Grid.RowSpan="4" Width="5" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" Tag="West" PointerPressed="Resize_PointerPressed"/>
-            <Border Grid.Row="0" Grid.RowSpan="4" Width="5" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" Tag="East" PointerPressed="Resize_PointerPressed"/>
-            <Border Grid.Row="0" Grid.RowSpan="4" Height="5" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" Tag="North" PointerPressed="Resize_PointerPressed"/>
-            <Border Grid.Row="0" Grid.RowSpan="4" Height="5" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" Tag="South" PointerPressed="Resize_PointerPressed"/>
+                </Grid>
+            </Border>
+        </Border>
 
-            <Border Grid.Row="0" Grid.RowSpan="4" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" Tag="NorthWest" PointerPressed="Resize_PointerPressed"/>
-            <Border Grid.Row="0" Grid.RowSpan="4" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" Tag="NorthEast" PointerPressed="Resize_PointerPressed"/>
-            <Border Grid.Row="0" Grid.RowSpan="4" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" Tag="SouthWest" PointerPressed="Resize_PointerPressed"/>
-            <Border Grid.Row="0" Grid.RowSpan="4" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" Tag="SouthEast" PointerPressed="Resize_PointerPressed"/>
-        </Grid>
-    </Border>
+        <!-- ================= RESIZE BORDERS & CORNERS ================= -->
+        <Border Width="5" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" Tag="West" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="5" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" Tag="East" PointerPressed="Resize_PointerPressed"/>
+        <Border Height="5" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" Tag="North" PointerPressed="Resize_PointerPressed"/>
+        <Border Height="5" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" Tag="South" PointerPressed="Resize_PointerPressed"/>
+
+        <Border Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" Tag="NorthWest" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" Tag="NorthEast" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" Tag="SouthWest" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" Tag="SouthEast" PointerPressed="Resize_PointerPressed"/>
+    </Grid>
 </Window>

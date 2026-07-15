@@ -28,7 +28,6 @@ namespace ExplorerHistoryTracker
         {
             "libSkiaSharp.dll",
             "libHarfBuzzSharp.dll",
-            "av_libglesv2.dll",
         };
 
         private static string? _extractDir;

@@ -100,14 +100,14 @@ if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
 # ── UPX 压缩函数 ──
 function Compress-WithUpx($targetExePath) {
     Write-Host 'Checking for UPX...'
-    $upxDir = Join-Path $env:SystemDrive 'Windows\Temp\upx_tools'
+    $upxDir = Join-Path $env:TEMP 'upx_tools'
     $upxExe = Join-Path $upxDir 'upx.exe'
     
     if (-not (Test-Path -LiteralPath $upxExe)) {
         Write-Host 'UPX not found, downloading UPX...'
         try {
             $upxUrl = "https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-win64.zip"
-            $zipPath = Join-Path $env:SystemDrive 'Windows\Temp\upx.zip'
+            $zipPath = Join-Path $env:TEMP 'upx.zip'
             
             # Download using Net.WebClient
             $webClient = New-Object System.Net.WebClient
@@ -138,7 +138,7 @@ function Compress-WithUpx($targetExePath) {
     if (Test-Path -LiteralPath $upxExe) {
         Write-Host 'Running UPX compression on ASCII staging path...'
         # Copy to ASCII staging path to prevent path encoding issues
-        $stagingPath = Join-Path $env:SystemDrive 'Windows\Temp\Tuna_staging.exe'
+        $stagingPath = Join-Path $env:TEMP 'Tuna_staging.exe'
         if (Test-Path -LiteralPath $stagingPath) {
             Remove-Item -LiteralPath $stagingPath -Force -ErrorAction SilentlyContinue
         }

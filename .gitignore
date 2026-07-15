@@ -21,4 +21,5 @@ App_PublishOutput/
 *.cache
 stderr.txt
 stdout.txt
+crash_log.txt
 

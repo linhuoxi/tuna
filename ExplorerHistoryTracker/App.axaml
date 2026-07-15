@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:media="using:Avalonia.Media"
              x:Class="ExplorerHistoryTracker.App"
              RequestedThemeVariant="Default">
 
@@ -107,6 +108,9 @@
                     <SolidColorBrush x:Key="RadioButtonCheckGlyphFill" Color="{StaticResource AccentColor}"/>
                     <SolidColorBrush x:Key="RadioButtonCheckGlyphStrokeChecked" Color="{StaticResource AccentColor}"/>
                     <SolidColorBrush x:Key="SelectedBgBrush" Color="#1A012AAC"/>
+                    <!-- Window Shadows -->
+                    <media:BoxShadows x:Key="WindowNormalShadow">0 8 24 0 #0C000000, 0 3 8 0 #04000000</media:BoxShadows>
+                    <media:BoxShadows x:Key="WindowHoverShadow">0 16 36 0 #12000000, 0 6 12 0 #05000000, 0 0 12 0 #18012AAC</media:BoxShadows>
                 </ResourceDictionary>
 
                 <!-- ==================== DARK THEME ==================== -->
@@ -176,6 +180,9 @@
                     <SolidColorBrush x:Key="RadioButtonCheckGlyphFill" Color="{StaticResource AccentColor}"/>
                     <SolidColorBrush x:Key="RadioButtonCheckGlyphStrokeChecked" Color="{StaticResource AccentColor}"/>
                     <SolidColorBrush x:Key="SelectedBgBrush" Color="#223572EF"/>
+                    <!-- Window Shadows -->
+                    <media:BoxShadows x:Key="WindowNormalShadow">0 8 24 0 #4C000000, 0 3 8 0 #2A000000</media:BoxShadows>
+                    <media:BoxShadows x:Key="WindowHoverShadow">0 16 36 0 #6C000000, 0 6 12 0 #3A000000, 0 0 12 0 #283572EF</media:BoxShadows>
                 </ResourceDictionary>
 
             </ResourceDictionary.ThemeDictionaries>

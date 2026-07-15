@@ -10,8 +10,8 @@ namespace ExplorerHistoryTracker.Services
 {
     public class AppConfig
     {
-        public double WindowWidth { get; set; } = 380;
-        public double WindowHeight { get; set; } = 550;
+        public double WindowWidth { get; set; } = 460;
+        public double WindowHeight { get; set; } = 630;
         public bool IsBackgroundMonitorEnabled { get; set; } = true;
         public bool IsTopmost { get; set; } = false;
         public string ThemeMode { get; set; } = "System";

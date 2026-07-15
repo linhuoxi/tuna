@@ -195,6 +195,13 @@ namespace ExplorerHistoryTracker.ViewModels
             }
         }
 
+        private bool _isWindowVisible = true;
+        public bool IsWindowVisible
+        {
+            get => _isWindowVisible;
+            set => SetProperty(ref _isWindowVisible, value);
+        }
+
         public bool IsTopmost
         {
             get => _configManager.Config.IsTopmost;
@@ -509,6 +516,19 @@ namespace ExplorerHistoryTracker.ViewModels
             }
         }
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
+
+    private void TrimWorkingSet()
+    {
+        try
+        {
+            SetProcessWorkingSetSize(Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1));
+        }
+        catch { }
+    }
+
     [DllImport("ole32.dll", ExactSpelling = true)]
     private static extern int CoCreateInstance(
         [In, MarshalAs(UnmanagedType.LPStruct)] Guid rclsid,
@@ -696,6 +716,7 @@ namespace ExplorerHistoryTracker.ViewModels
                 }
                 catch { }
 
+                int iterations = 0;
                 while (_keepMonitoring)
                 {
                     try
@@ -739,6 +760,27 @@ namespace ExplorerHistoryTracker.ViewModels
                     catch
                     {
                         // Ignore process querying errors
+                    }
+
+                    if (!IsWindowVisible)
+                    {
+                        iterations++;
+                        if (iterations >= 30) // every 60 seconds (loop runs every 2s)
+                        {
+                            iterations = 0;
+                            try
+                            {
+                                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+                                GC.WaitForPendingFinalizers();
+                                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+                                TrimWorkingSet();
+                            }
+                            catch { }
+                        }
+                    }
+                    else
+                    {
+                        iterations = 0; // reset counter when window becomes visible
                     }
 
                     Thread.Sleep(2000);

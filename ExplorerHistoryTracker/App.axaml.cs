@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -98,69 +97,71 @@ namespace ExplorerHistoryTracker
                             
                             try
                             {
-                                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: Wakeup event received. Current window is null? {window == null}\n");
                                 if (window == null)
                                 {
                                     window = new MainWindow { DataContext = new MainViewModel() };
                                     desktop.MainWindow = window;
-                                    File.AppendAllText("trace_log.txt", $"{DateTime.Now}: Created new window instance.\n");
                                 }
-                                window.IsWakingUp = true;
-                                
-                                if (window.WindowState != WindowState.Normal)
-                                    window.WindowState = WindowState.Normal;
-                                    
-                                window.RepositionAtCursor();
-                                window.Show();
-                                window.RepositionAtCursor();
-                                Dispatcher.UIThread.Post(() => window.RepositionAtCursor());
-                                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: window.Show() executed.\n");
-                                
-                                // Cache the user's original topmost setting before we mess with it
-                                bool originalTopmost = false;
-                                if (window.DataContext is MainViewModel vmOrig)
-                                    originalTopmost = vmOrig.IsTopmost;
+                                // Quicker can show the existing HWND and also cause a second-instance
+                                // wakeup signal for the same user action. The native show already fixed
+                                // the target position, so do not activate and reposition a second time.
+                                if (window.IsWakingUp || window.WasExternallyShownRecently())
+                                {
+                                    return;
+                                }
 
-                                // Force Topmost temporarily to bypass Windows foreground lock
-                                window.Topmost = true;
-                                window.Activate();
-                                
-                                // Restore original Topmost state to both ViewModel and Window
-                                if (window.DataContext is MainViewModel vmRestore)
-                                    vmRestore.IsTopmost = originalTopmost;
-                                window.Topmost = originalTopmost;
-                                
-                                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: window.Activate() executed successfully.\n");
-                                
-                                // Reset the waking up lock after a short delay so normal Deactivated works again.
-                                // Post to UI thread to avoid data-race on IsWakingUp (read by OnDeactivated on UI thread).
-                                Task.Delay(200).ContinueWith(_ => Dispatcher.UIThread.Post(() => window.IsWakingUp = false));
+                                window.BeginInternalWakeupShow();
+                                try
+                                {
+                                    if (window.WindowState != WindowState.Normal)
+                                        window.WindowState = WindowState.Normal;
+
+                                    window.Show();
+
+                                    // Cache the user's original topmost setting before we mess with it
+                                    bool originalTopmost = false;
+                                    if (window.DataContext is MainViewModel vmOrig)
+                                        originalTopmost = vmOrig.IsTopmost;
+
+                                    // Force Topmost temporarily to bypass Windows foreground lock
+                                    window.Topmost = true;
+                                    window.Activate();
+
+                                    // Restore original Topmost state to both ViewModel and Window
+                                    if (window.DataContext is MainViewModel vmRestore)
+                                        vmRestore.IsTopmost = originalTopmost;
+                                    window.Topmost = originalTopmost;
+                                }
+                                finally
+                                {
+                                    window.EndInternalWakeupShow();
+                                }
                             }
-                            catch (Exception ex)
+                            catch
                             {
-                                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: Exception caught during Show(): {ex.Message}. Recreating from scratch...\n");
                                 // If the window was previously Closed (not Hidden), calling Show() throws an exception.
                                 // In this case, we recreate the window from scratch.
                                 window = new MainWindow { DataContext = new MainViewModel() };
                                 desktop.MainWindow = window;
                                 
-                                window.IsWakingUp = true;
-                                window.RepositionAtCursor();
-                                window.Show();
-                                window.RepositionAtCursor();
-                                Dispatcher.UIThread.Post(() => window.RepositionAtCursor());
-                                
-                                bool originalTopmost = false;
-                                if (window.DataContext is MainViewModel vmOrig) originalTopmost = vmOrig.IsTopmost;
-                                
-                                window.Topmost = true;
-                                window.Activate();
-                                
-                                if (window.DataContext is MainViewModel vmRestore) vmRestore.IsTopmost = originalTopmost;
-                                window.Topmost = originalTopmost;
-                                
-                                Task.Delay(200).ContinueWith(_ => Dispatcher.UIThread.Post(() => window.IsWakingUp = false));
-                                File.AppendAllText("trace_log.txt", $"{DateTime.Now}: Recovery successful.\n");
+                                window.BeginInternalWakeupShow();
+                                try
+                                {
+                                    window.Show();
+
+                                    bool originalTopmost = false;
+                                    if (window.DataContext is MainViewModel vmOrig) originalTopmost = vmOrig.IsTopmost;
+
+                                    window.Topmost = true;
+                                    window.Activate();
+
+                                    if (window.DataContext is MainViewModel vmRestore) vmRestore.IsTopmost = originalTopmost;
+                                    window.Topmost = originalTopmost;
+                                }
+                                finally
+                                {
+                                    window.EndInternalWakeupShow();
+                                }
                             }
                         }
                     });

@@ -1042,11 +1042,14 @@ namespace ExplorerHistoryTracker
                 // 3. Populate target path
                 SendMessage(editHwnd, WM_SETTEXT, IntPtr.Zero, path);
 
-                // 4. Send Enter key down and up to initiate navigation
+                // 4. Post Enter key messages to the edit control to initiate navigation asynchronously
                 const uint WM_KEYDOWN = 0x0100;
+                const uint WM_CHAR = 0x0102;
                 const uint WM_KEYUP = 0x0101;
-                SendMessage(editHwnd, WM_KEYDOWN, new IntPtr(VK_RETURN), IntPtr.Zero);
-                SendMessage(editHwnd, WM_KEYUP, new IntPtr(VK_RETURN), IntPtr.Zero);
+
+                PostMessage(editHwnd, WM_KEYDOWN, new IntPtr(VK_RETURN), IntPtr.Zero);
+                PostMessage(editHwnd, WM_CHAR, new IntPtr(13), IntPtr.Zero);
+                PostMessage(editHwnd, WM_KEYUP, new IntPtr(VK_RETURN), IntPtr.Zero);
 
                 return true;
             }

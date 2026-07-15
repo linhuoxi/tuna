@@ -156,6 +156,18 @@ namespace ExplorerHistoryTracker
 
         private const uint GW_CHILD = 5;
 
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
+
+        // Standard control ID for the filename combo in Vista+ IFileDialog
+        private const int IDC_FILENAME_COMBO = 0x47C;  // 1148
+
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
@@ -937,33 +949,39 @@ namespace ExplorerHistoryTracker
         {
             try
             {
-                var handle = this.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-                if (handle == IntPtr.Zero) return IntPtr.Zero;
+                var selfHandle = this.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                IntPtr found = IntPtr.Zero;
 
-                IntPtr nextHwnd = GetWindow(handle, GW_HWNDNEXT);
-                int searchLimit = 30; // Check top 30 windows in Z-order down
-                while (nextHwnd != IntPtr.Zero && searchLimit-- > 0)
+                EnumWindows((hWnd, _) =>
                 {
-                    if (IsWindowVisible(nextHwnd))
+                    // Skip our own window
+                    if (hWnd == selfHandle) return true;
+                    if (!IsWindowVisible(hWnd)) return true;
+
+                    var className = new System.Text.StringBuilder(256);
+                    if (GetClassName(hWnd, className, className.Capacity) <= 0) return true;
+                    if (className.ToString() != "#32770") return true;
+
+                    // Modern Vista+ file dialog: has the filename combo with ID 0x47C
+                    IntPtr filenameCombo = GetDlgItem(hWnd, IDC_FILENAME_COMBO);
+                    if (filenameCombo != IntPtr.Zero)
                     {
-                        System.Text.StringBuilder className = new System.Text.StringBuilder(256);
-                        if (GetClassName(nextHwnd, className, className.Capacity) > 0)
-                        {
-                            string clsName = className.ToString();
-                            if (clsName == "#32770")
-                            {
-                                // Verify it contains controls characteristic of a file dialog (Edit or ComboBoxEx32)
-                                IntPtr comboBoxEx = FindChildWindow(nextHwnd, "ComboBoxEx32");
-                                IntPtr editHwnd = FindChildWindow(nextHwnd, "Edit");
-                                if (comboBoxEx != IntPtr.Zero || editHwnd != IntPtr.Zero)
-                                {
-                                    return nextHwnd;
-                                }
-                            }
-                        }
+                        found = hWnd;
+                        return false; // stop enumeration
                     }
-                    nextHwnd = GetWindow(nextHwnd, GW_HWNDNEXT);
-                }
+
+                    // Legacy file dialog: has ComboBoxEx32 child
+                    IntPtr comboBoxEx = FindChildWindow(hWnd, "ComboBoxEx32");
+                    if (comboBoxEx != IntPtr.Zero)
+                    {
+                        found = hWnd;
+                        return false; // stop enumeration
+                    }
+
+                    return true; // continue
+                }, IntPtr.Zero);
+
+                return found;
             }
             catch
             {
@@ -1014,45 +1032,55 @@ namespace ExplorerHistoryTracker
             try
             {
                 // 1. Check class name of target window to verify it's a dialog
-                System.Text.StringBuilder className = new System.Text.StringBuilder(256);
+                var className = new System.Text.StringBuilder(256);
                 if (GetClassName(hwnd, className, className.Capacity) == 0) return false;
-
                 if (className.ToString() != "#32770") return false;
 
-                // 2. Locate the Edit control within ComboBoxEx32 -> ComboBox -> Edit
                 IntPtr editHwnd = IntPtr.Zero;
-                IntPtr comboBoxEx = FindChildWindow(hwnd, "ComboBoxEx32");
-                if (comboBoxEx != IntPtr.Zero)
+
+                // 2a. Modern Vista+ file dialog: the filename combo has control ID 0x47C
+                IntPtr filenameCombo = GetDlgItem(hwnd, IDC_FILENAME_COMBO);
+                if (filenameCombo != IntPtr.Zero)
                 {
-                    IntPtr comboBox = FindWindowEx(comboBoxEx, IntPtr.Zero, "ComboBox", null);
-                    if (comboBox != IntPtr.Zero)
+                    // The combo is a ComboBox; the Edit is its child
+                    editHwnd = FindWindowEx(filenameCombo, IntPtr.Zero, "Edit", null);
+                    // Some dialog variants embed Edit directly
+                    if (editHwnd == IntPtr.Zero)
                     {
-                        editHwnd = FindWindowEx(comboBox, IntPtr.Zero, "Edit", null);
+                        editHwnd = filenameCombo; // The combo itself may accept WM_SETTEXT
                     }
                 }
 
-                // Fallback: search for any Edit control recursively
+                // 2b. Legacy file dialog: ComboBoxEx32 -> ComboBox -> Edit
                 if (editHwnd == IntPtr.Zero)
                 {
-                    editHwnd = FindChildWindow(hwnd, "Edit");
+                    IntPtr comboBoxEx = FindChildWindow(hwnd, "ComboBoxEx32");
+                    if (comboBoxEx != IntPtr.Zero)
+                    {
+                        IntPtr comboBox = FindWindowEx(comboBoxEx, IntPtr.Zero, "ComboBox", null);
+                        if (comboBox != IntPtr.Zero)
+                        {
+                            editHwnd = FindWindowEx(comboBox, IntPtr.Zero, "Edit", null);
+                        }
+                    }
                 }
 
                 if (editHwnd == IntPtr.Zero) return false;
 
-                // 3. Populate target path (ensure it ends with a backslash to force folder navigation rather than file saving)
-                string formattedPath = path;
-                if (!formattedPath.EndsWith("\\"))
-                {
-                    formattedPath += "\\";
-                }
-                SendMessage(editHwnd, WM_SETTEXT, IntPtr.Zero, formattedPath);
+                // 3. Bring the dialog to the foreground so keystrokes are accepted
+                SetForegroundWindow(hwnd);
 
-                // 4. Post a single Enter key sequence (keydown and keyup) to the edit control to initiate navigation
+                // 4. Populate target path
+                SendMessage(editHwnd, WM_SETTEXT, IntPtr.Zero, path);
+
+                // 5. Small delay so the dialog processes the text change
+                System.Threading.Thread.Sleep(50);
+
+                // 6. Send Enter key down and up to initiate navigation
                 const uint WM_KEYDOWN = 0x0100;
                 const uint WM_KEYUP = 0x0101;
-
-                PostMessage(editHwnd, WM_KEYDOWN, new IntPtr(VK_RETURN), IntPtr.Zero);
-                PostMessage(editHwnd, WM_KEYUP, new IntPtr(VK_RETURN), IntPtr.Zero);
+                SendMessage(editHwnd, WM_KEYDOWN, new IntPtr(VK_RETURN), IntPtr.Zero);
+                SendMessage(editHwnd, WM_KEYUP, new IntPtr(VK_RETURN), IntPtr.Zero);
 
                 return true;
             }

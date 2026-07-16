@@ -31,7 +31,10 @@ namespace ExplorerHistoryTracker
 
         // ── Win32 subclassing to block window minimization at the OS level ──
         private const int GWL_WNDPROC = -4;
+        private const int GWL_STYLE = -16;
         private const int WM_ACTIVATE = 0x0006;
+        private const int WM_SETCURSOR = 0x0020;
+        private const int WM_NCHITTEST = 0x0084;
         private const int WM_SYSCOMMAND = 0x0112;
         private const int WM_NCLBUTTONDOWN = 0x00A1;
         private const int WM_SHOWWINDOW = 0x0018;
@@ -39,6 +42,7 @@ namespace ExplorerHistoryTracker
         private const int WA_ACTIVE = 1;
         private const int WA_CLICKACTIVE = 2;
         private const int SC_MINIMIZE = 0xF020;
+        private const long WS_THICKFRAME = 0x00040000L;
         private const int HTLEFT = 10;
         private const int HTRIGHT = 11;
         private const int HTTOP = 12;
@@ -47,6 +51,10 @@ namespace ExplorerHistoryTracker
         private const int HTBOTTOM = 15;
         private const int HTBOTTOMLEFT = 16;
         private const int HTBOTTOMRIGHT = 17;
+        private const int IDC_SIZENWSE = 32642;
+        private const int IDC_SIZENESW = 32643;
+        private const int IDC_SIZEWE = 32644;
+        private const int IDC_SIZENS = 32645;
         public const int SW_HIDE = 0;
         private const uint WM_APP = 0x8000;
         private const uint WM_REPOSITION = WM_APP + 1;
@@ -64,6 +72,7 @@ namespace ExplorerHistoryTracker
         private const uint SWP_NOMOVE = 0x0002;
         private const uint SWP_NOZORDER = 0x0004;
         private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
         private const uint SWP_SHOWWINDOW = 0x0040;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -93,15 +102,27 @@ namespace ExplorerHistoryTracker
         [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
         private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
 
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+        private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
+        private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
+
         [DllImport("user32.dll")]
         private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr DefWindowProc(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr LoadCursor(IntPtr hInstance, IntPtr lpCursorName);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetCursor(IntPtr hCursor);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -126,6 +147,9 @@ namespace ExplorerHistoryTracker
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -160,6 +184,13 @@ namespace ExplorerHistoryTracker
             return IntPtr.Size == 8
                 ? SetWindowLongPtr64(hWnd, nIndex, dwNewLong)
                 : new IntPtr(SetWindowLong32(hWnd, nIndex, dwNewLong.ToInt32()));
+        }
+
+        private static IntPtr GetWindowLongPtrCompat(IntPtr hWnd, int nIndex)
+        {
+            return IntPtr.Size == 8
+                ? GetWindowLongPtr64(hWnd, nIndex)
+                : new IntPtr(GetWindowLong32(hWnd, nIndex));
         }
 
         private delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -197,6 +228,11 @@ namespace ExplorerHistoryTracker
             };
             _windowSizeSaveTimer.Tick += WindowSizeSaveTimer_Tick;
             InitializeComponent();
+            AddHandler(
+                PointerPressedEvent,
+                WindowResize_PointerPressed,
+                RoutingStrategies.Tunnel,
+                handledEventsToo: true);
             Resized += MainWindow_Resized;
         }
 
@@ -240,7 +276,6 @@ namespace ExplorerHistoryTracker
 
                 // Install Win32 hook to intercept and block all minimize commands at the OS level
                 InstallMinimizeBlocker();
-
                 // Auto hide/exit the application when it loses active focus (clicks elsewhere)
                 Deactivated += OnDeactivated;
             }
@@ -265,6 +300,14 @@ namespace ExplorerHistoryTracker
             }
 
             ApplyShowTargetOrReposition();
+
+            // Avalonia can recreate/reset the native style while a transparent borderless
+            // window transitions from its initial hidden state to a real Show(). Reapply on
+            // every show, then once more after the current layout/native-style pass finishes.
+            EnsureResizableWindowStyle();
+            Dispatcher.UIThread.Post(
+                EnsureResizableWindowStyle,
+                DispatcherPriority.Loaded);
         }
 
         private void OnDeactivated(object? sender, EventArgs e)
@@ -364,6 +407,40 @@ namespace ExplorerHistoryTracker
             catch
             {
                 // Ignore subclassing failures – OnPropertyChanged fallback still works
+            }
+        }
+
+        private void EnsureResizableWindowStyle()
+        {
+            if (!OperatingSystem.IsWindows()) return;
+
+            try
+            {
+                IntPtr hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                if (hwnd == IntPtr.Zero) return;
+
+                IntPtr style = GetWindowLongPtrCompat(hwnd, GWL_STYLE);
+                long updatedStyle = style.ToInt64() | WS_THICKFRAME;
+                if (updatedStyle != style.ToInt64())
+                {
+                    SetWindowLongPtrCompat(hwnd, GWL_STYLE, new IntPtr(updatedStyle));
+                    SetWindowPos(
+                        hwnd,
+                        IntPtr.Zero,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE |
+                        SWP_NOSIZE |
+                        SWP_NOZORDER |
+                        SWP_NOACTIVATE |
+                        SWP_FRAMECHANGED);
+                }
+            }
+            catch
+            {
+                // The explicit edge drag still provides a framework fallback.
             }
         }
 
@@ -503,6 +580,72 @@ namespace ExplorerHistoryTracker
         {
             try
             {
+                if (msg == WM_NCHITTEST && GetWindowRect(hWnd, out RECT resizeRect))
+                {
+                    // Handle resize hit-testing at the HWND level. A transparent,
+                    // borderless Avalonia window cannot reliably route pointer events from
+                    // fully transparent rounded corners, while WM_NCHITTEST is evaluated by
+                    // Windows before any control receives the pointer.
+                    const int edgeSize = 1;
+                    const int cornerSize = 1;
+
+                    long packedPoint = lParam.ToInt64();
+                    int pointerX = unchecked((short)(packedPoint & 0xFFFF));
+                    int pointerY = unchecked((short)((packedPoint >> 16) & 0xFFFF));
+
+                    bool nearWestCorner = pointerX < resizeRect.Left + cornerSize;
+                    bool nearEastCorner = pointerX >= resizeRect.Right - cornerSize;
+                    bool nearNorthCorner = pointerY < resizeRect.Top + cornerSize;
+                    bool nearSouthCorner = pointerY >= resizeRect.Bottom - cornerSize;
+                    bool onWest = pointerX < resizeRect.Left + edgeSize;
+                    bool onEast = pointerX >= resizeRect.Right - edgeSize;
+                    bool onNorth = pointerY < resizeRect.Top + edgeSize;
+                    bool onSouth = pointerY >= resizeRect.Bottom - edgeSize;
+
+                    if (nearWestCorner && nearNorthCorner) return new IntPtr(HTTOPLEFT);
+                    if (nearEastCorner && nearNorthCorner) return new IntPtr(HTTOPRIGHT);
+                    if (nearWestCorner && nearSouthCorner) return new IntPtr(HTBOTTOMLEFT);
+                    if (nearEastCorner && nearSouthCorner) return new IntPtr(HTBOTTOMRIGHT);
+                    if (onWest) return new IntPtr(HTLEFT);
+                    if (onEast) return new IntPtr(HTRIGHT);
+                    if (onNorth) return new IntPtr(HTTOP);
+                    if (onSouth) return new IntPtr(HTBOTTOM);
+                }
+
+                if (msg == WM_SETCURSOR)
+                {
+                    int hitTest = unchecked((short)(lParam.ToInt64() & 0xFFFF));
+                    int cursorId = hitTest switch
+                    {
+                        HTLEFT or HTRIGHT => IDC_SIZEWE,
+                        HTTOP or HTBOTTOM => IDC_SIZENS,
+                        HTTOPLEFT or HTBOTTOMRIGHT => IDC_SIZENWSE,
+                        HTTOPRIGHT or HTBOTTOMLEFT => IDC_SIZENESW,
+                        _ => 0
+                    };
+
+                    if (cursorId != 0)
+                    {
+                        IntPtr resizeCursor = LoadCursor(IntPtr.Zero, new IntPtr(cursorId));
+                        if (resizeCursor != IntPtr.Zero)
+                        {
+                            SetCursor(resizeCursor);
+                            return new IntPtr(1);
+                        }
+                    }
+                }
+
+                if (msg == WM_NCLBUTTONDOWN)
+                {
+                    int hitTest = wParam.ToInt32();
+                    if (hitTest is >= HTLEFT and <= HTBOTTOMRIGHT)
+                    {
+                        // Bypass Avalonia's borderless-window mouse handling and let the
+                        // Windows default procedure enter its native sizing loop directly.
+                        return DefWindowProc(hWnd, msg, wParam, lParam);
+                    }
+                }
+
                 if (msg == WM_SYSCOMMAND && ((int)wParam & 0xFFF0) == SC_MINIMIZE)
                 {
                     // Block minimize → perform hide/close instead
@@ -1083,41 +1226,40 @@ namespace ExplorerHistoryTracker
                 Enum.TryParse<WindowEdge>(edgeStr, out var edge))
             {
                 e.Handled = true;
-
-                if (OperatingSystem.IsWindows())
-                {
-                    IntPtr hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-                    int hitTest = edge switch
-                    {
-                        WindowEdge.West => HTLEFT,
-                        WindowEdge.East => HTRIGHT,
-                        WindowEdge.North => HTTOP,
-                        WindowEdge.NorthWest => HTTOPLEFT,
-                        WindowEdge.NorthEast => HTTOPRIGHT,
-                        WindowEdge.South => HTBOTTOM,
-                        WindowEdge.SouthWest => HTBOTTOMLEFT,
-                        WindowEdge.SouthEast => HTBOTTOMRIGHT,
-                        _ => 0
-                    };
-
-                    if (hwnd != IntPtr.Zero && hitTest != 0 && GetCursorPos(out POINT point))
-                    {
-                        int packedPosition =
-                            (point.X & 0xFFFF) |
-                            ((point.Y & 0xFFFF) << 16);
-                        e.Pointer.Capture(null);
-                        ReleaseCapture();
-                        SendMessage(
-                            hwnd,
-                            WM_NCLBUTTONDOWN,
-                            new IntPtr(hitTest),
-                            new IntPtr(packedPosition));
-                        return;
-                    }
-                }
-
                 BeginResizeDrag(edge, e);
             }
+        }
+
+        private void WindowResize_PointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+                return;
+
+            Point point = e.GetPosition(this);
+            const double edgeSize = 1;
+            bool west = point.X <= edgeSize;
+            bool east = point.X >= Bounds.Width - edgeSize;
+            bool north = point.Y <= edgeSize;
+            bool south = point.Y >= Bounds.Height - edgeSize;
+
+            WindowEdge? edge = (west, east, north, south) switch
+            {
+                (true, _, true, _) => WindowEdge.NorthWest,
+                (_, true, true, _) => WindowEdge.NorthEast,
+                (true, _, _, true) => WindowEdge.SouthWest,
+                (_, true, _, true) => WindowEdge.SouthEast,
+                (true, _, _, _) => WindowEdge.West,
+                (_, true, _, _) => WindowEdge.East,
+                (_, _, true, _) => WindowEdge.North,
+                (_, _, _, true) => WindowEdge.South,
+                _ => null
+            };
+
+            if (edge is not { } resizeEdge)
+                return;
+
+            e.Handled = true;
+            BeginResizeDrag(resizeEdge, e);
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)

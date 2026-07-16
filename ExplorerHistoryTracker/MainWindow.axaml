@@ -1587,14 +1587,16 @@
         </Border>
 
         <!-- ================= RESIZE BORDERS & CORNERS ================= -->
-        <Border Width="8" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" Tag="West" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="8" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" Tag="East" PointerPressed="Resize_PointerPressed"/>
-        <Border Height="8" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" Tag="North" PointerPressed="Resize_PointerPressed"/>
-        <Border Height="8" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" Tag="South" PointerPressed="Resize_PointerPressed"/>
+        <!-- A 1/255-alpha surface remains visually transparent but guarantees that the
+             compositor keeps the rounded outer area mouse-hit-testable. -->
+        <Border Width="1" HorizontalAlignment="Left" Background="#01000000" Cursor="SizeWestEast" Tag="West" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="1" HorizontalAlignment="Right" Background="#01000000" Cursor="SizeWestEast" Tag="East" PointerPressed="Resize_PointerPressed"/>
+        <Border Height="1" VerticalAlignment="Top" Background="#01000000" Cursor="SizeNorthSouth" Tag="North" PointerPressed="Resize_PointerPressed"/>
+        <Border Height="1" VerticalAlignment="Bottom" Background="#01000000" Cursor="SizeNorthSouth" Tag="South" PointerPressed="Resize_PointerPressed"/>
 
-        <Border Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" Tag="NorthWest" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" Tag="NorthEast" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" Tag="SouthWest" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" Tag="SouthEast" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="1" Height="1" HorizontalAlignment="Left" VerticalAlignment="Top" Background="#01000000" Cursor="TopLeftCorner" Tag="NorthWest" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="1" Height="1" HorizontalAlignment="Right" VerticalAlignment="Top" Background="#01000000" Cursor="TopRightCorner" Tag="NorthEast" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="1" Height="1" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="#01000000" Cursor="BottomLeftCorner" Tag="SouthWest" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="1" Height="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="#01000000" Cursor="BottomRightCorner" Tag="SouthEast" PointerPressed="Resize_PointerPressed"/>
     </Grid>
 </Window>

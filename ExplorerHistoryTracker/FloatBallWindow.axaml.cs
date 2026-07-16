@@ -38,6 +38,10 @@ namespace ExplorerHistoryTracker
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct POINT
         {
@@ -111,10 +115,6 @@ namespace ExplorerHistoryTracker
         private bool _isPointerTracking;
         private DateTime _lookTrackingStartsAt;
         private static readonly int[] AmbientActionRows = { 3, 4, 6, 7, 8 };
-        private DispatcherTimer? _contextMenuFocusTimer;
-        private IntPtr _contextMenuForegroundHwnd;
-        private DateTime _contextMenuFocusArmedAt;
-
         public FloatBallWindow()
         {
             InitializeComponent();
@@ -456,9 +456,7 @@ namespace ExplorerHistoryTracker
                     if (platformHandle != null && platformHandle.Handle != IntPtr.Zero)
                     {
                         IntPtr hwnd = platformHandle.Handle;
-                        IntPtr exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-                        IntPtr newExStyle = new IntPtr(exStyle.ToInt64() | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE);
-                        SetWindowLongPtr(hwnd, GWL_EXSTYLE, newExStyle);
+                        SetPetNoActivateStyle(hwnd, true);
 
                         InstallMinimizeBlocker();
                     }
@@ -707,54 +705,56 @@ namespace ExplorerHistoryTracker
 
         private void PetContextMenu_Opening(object? sender, CancelEventArgs e)
         {
-            _contextMenuForegroundHwnd = GetForegroundWindow();
-            _contextMenuFocusArmedAt = DateTime.UtcNow.AddMilliseconds(250);
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return;
 
-            if (_contextMenuFocusTimer == null)
+            try
             {
-                _contextMenuFocusTimer = new DispatcherTimer
+                IntPtr hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                if (hwnd != IntPtr.Zero)
                 {
-                    Interval = TimeSpan.FromMilliseconds(100)
-                };
-                _contextMenuFocusTimer.Tick += ContextMenuFocusTimer_Tick;
+                    // The pet normally stays non-activating so a file dialog keeps focus.
+                    // A real context menu needs an active owner to receive menu-item clicks
+                    // and to close automatically when focus moves elsewhere.
+                    SetPetNoActivateStyle(hwnd, false);
+                    SetForegroundWindow(hwnd);
+                }
             }
-
-            _contextMenuFocusTimer.Start();
+            catch { }
         }
 
         private void PetContextMenu_Closing(object? sender, CancelEventArgs e)
         {
-            _contextMenuFocusTimer?.Stop();
-            _contextMenuForegroundHwnd = IntPtr.Zero;
-        }
-
-        private void ContextMenuFocusTimer_Tick(object? sender, EventArgs e)
-        {
-            IntPtr foreground = GetForegroundWindow();
-            if (DateTime.UtcNow < _contextMenuFocusArmedAt)
-            {
-                // Let the popup finish activating before choosing its foreground HWND.
-                if (foreground != IntPtr.Zero)
-                {
-                    _contextMenuForegroundHwnd = foreground;
-                }
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 return;
-            }
 
-            if (_contextMenuForegroundHwnd != IntPtr.Zero &&
-                foreground != _contextMenuForegroundHwnd)
+            try
             {
-                ClosePetContextMenu();
+                IntPtr hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                if (hwnd != IntPtr.Zero)
+                {
+                    SetPetNoActivateStyle(hwnd, true);
+                }
             }
+            catch { }
         }
 
         private void ClosePetContextMenu()
         {
-            _contextMenuFocusTimer?.Stop();
             if (PetContextMenu.IsOpen)
             {
                 PetContextMenu.Close();
             }
+        }
+
+        private static void SetPetNoActivateStyle(IntPtr hwnd, bool noActivate)
+        {
+            IntPtr exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+            long styleValue = exStyle.ToInt64() | WS_EX_TOOLWINDOW;
+            styleValue = noActivate
+                ? styleValue | WS_EX_NOACTIVATE
+                : styleValue & ~WS_EX_NOACTIVATE;
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(styleValue));
         }
 
         private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)

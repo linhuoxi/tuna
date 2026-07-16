@@ -13,6 +13,7 @@ namespace ExplorerHistoryTracker
     [JsonSourceGenerationOptions(WriteIndented = true)]
     [JsonSerializable(typeof(AppConfig))]
     [JsonSerializable(typeof(List<FolderHistoryItem>))]
+    [JsonSerializable(typeof(CodexPet))]
     internal partial class JsonContext : JsonSerializerContext
     {
     }

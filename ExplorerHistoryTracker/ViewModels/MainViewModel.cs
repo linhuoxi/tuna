@@ -8,6 +8,9 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using System.Text.Json;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using ExplorerHistoryTracker.Models;
 using ExplorerHistoryTracker.Services;
@@ -47,6 +50,9 @@ namespace ExplorerHistoryTracker.ViewModels
         public ICommand RefreshCommand { get; }
         public ICommand ConfirmDialogCommand { get; }
         public ICommand CancelDialogCommand { get; }
+        public ICommand AddCustomPetCommand { get; }
+        public ICommand SelectPetCommand { get; }
+        public ICommand DeletePetCommand { get; }
 
         // Background monitors variables
         private bool _keepMonitoring = true;
@@ -85,6 +91,29 @@ namespace ExplorerHistoryTracker.ViewModels
             RefreshCommand = new RelayCommand(ExecuteRefresh);
             ConfirmDialogCommand = new RelayCommand(ExecuteConfirmDialog);
             CancelDialogCommand = new RelayCommand(() => IsDialogOpen = false);
+
+            // Initialize Custom Pet load
+            LoadAvailablePets();
+            // Migrate the retired floating-ball style and recover from a missing selection.
+            if (SelectedPetId == "default" || AvailablePets.All(p => p.Id != SelectedPetId))
+            {
+                SelectedPetId = "douya-chick";
+            }
+            AddCustomPetCommand = new RelayCommand(async _ => await SelectAndAddCustomPetAsync());
+            SelectPetCommand = new RelayCommand(param =>
+            {
+                if (param is string petId)
+                {
+                    SelectedPetId = petId;
+                }
+            });
+            DeletePetCommand = new RelayCommand(param =>
+            {
+                if (param is CodexPet pet)
+                {
+                    DeletePet(pet);
+                }
+            });
         }
 
         #region Properties
@@ -225,6 +254,7 @@ namespace ExplorerHistoryTracker.ViewModels
                 {
                     _configManager.Config.IsBackgroundMonitorEnabled = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsFloatBallEnabled));
                     _configManager.Save();
 
                     if (value)
@@ -234,6 +264,50 @@ namespace ExplorerHistoryTracker.ViewModels
                     else
                     {
                         StopBackgroundMonitors();
+                    }
+                }
+            }
+        }
+
+        public bool IsFloatBallEnabled
+        {
+            get => _configManager.Config.IsFloatBallEnabled && _configManager.Config.IsBackgroundMonitorEnabled;
+            set
+            {
+                if (_configManager.Config.IsFloatBallEnabled != value)
+                {
+                    _configManager.Config.IsFloatBallEnabled = value;
+                    OnPropertyChanged();
+                    _configManager.Save();
+                }
+            }
+        }
+
+        private List<CodexPet> _availablePets = new();
+        public List<CodexPet> AvailablePets
+        {
+            get => _availablePets;
+            set => SetProperty(ref _availablePets, value);
+        }
+
+        public string SelectedPetId
+        {
+            get => _configManager.Config.SelectedPetId ?? "douya-chick";
+            set
+            {
+                if (_configManager.Config.SelectedPetId != value)
+                {
+                    _configManager.Config.SelectedPetId = value;
+                    OnPropertyChanged();
+                    _configManager.Save();
+
+                    // Refresh selections in the UI list
+                    if (AvailablePets != null)
+                    {
+                        foreach (var pet in AvailablePets)
+                        {
+                            pet.RefreshSelection();
+                        }
                     }
                 }
             }
@@ -401,7 +475,7 @@ namespace ExplorerHistoryTracker.ViewModels
             });
         }
 
-        private void ShowAlert(string title, string text)
+        public void ShowAlert(string title, string text)
         {
             DialogTitle = title;
             DialogText = text;
@@ -1069,10 +1143,6 @@ namespace ExplorerHistoryTracker.ViewModels
             var recentFolders = queryFolders.OrderByDescending(i => i.LastVisited).ToList();
             UpdateCollection(RecentItems, recentFolders);
 
-            // Sync Pinned Folders
-            var pinnedFolders = queryFolders.Where(i => i.IsPinned).OrderByDescending(i => i.LastVisited).ToList();
-            UpdateCollection(PinnedItems, pinnedFolders);
-
             // Sync Stats Folders
             var statsFolders = queryFolders.OrderByDescending(i => i.VisitCount).Take(50).ToList();
             UpdateCollection(StatsItems, statsFolders);
@@ -1088,6 +1158,13 @@ namespace ExplorerHistoryTracker.ViewModels
 
             var recentApps = queryApps.OrderByDescending(i => i.LastVisited).ToList();
             UpdateCollection(RecentAppAndFileItems, recentApps);
+
+            // The pinned page must include every history source, not just folders.
+            var pinnedItems = queryFolders.Concat(queryApps)
+                .Where(i => i.IsPinned)
+                .OrderByDescending(i => i.LastVisited)
+                .ToList();
+            UpdateCollection(PinnedItems, pinnedItems);
 
             var selectedItems = RecentFilter switch
             {
@@ -1132,6 +1209,180 @@ namespace ExplorerHistoryTracker.ViewModels
                     target.Move(targetIdx, i);
                 }
             }
+        }
+
+        #endregion
+
+        #region Custom Pet Support
+
+        public void LoadAvailablePets()
+        {
+            var pets = new List<CodexPet>();
+
+            try
+            {
+                string appDataDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Tuna"
+                );
+                string petsDir = Path.Combine(appDataDir, "pets");
+                if (Directory.Exists(petsDir))
+                {
+                    foreach (var dir in Directory.GetDirectories(petsDir))
+                    {
+                        string petJsonPath = Path.Combine(dir, "pet.json");
+                        if (File.Exists(petJsonPath))
+                        {
+                            try
+                            {
+                                string json = File.ReadAllText(petJsonPath);
+                                var pet = JsonSerializer.Deserialize<CodexPet>(json, JsonContext.Default.CodexPet);
+                                if (pet != null && !string.IsNullOrEmpty(pet.Id))
+                                {
+                                    pet.FolderPath = dir;
+
+                                    // Verify spritesheetPath exists
+                                    string fullSpritesheetPath = Path.Combine(dir, pet.SpritesheetPath);
+                                    if (File.Exists(fullSpritesheetPath))
+                                    {
+                                        pets.Add(pet);
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            AvailablePets = pets
+                .OrderBy(p => p.Id == "douya-chick" ? 0 : 1)
+                .ThenBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+        }
+
+        private async Task SelectAndAddCustomPetAsync()
+        {
+            if (App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop &&
+                desktop.MainWindow != null)
+            {
+                var dialog = new OpenFolderDialog
+                {
+                    Title = "选择 Codex 宠物文件夹"
+                };
+
+                var win = desktop.MainWindow;
+                bool originalTopmost = win.Topmost;
+                try
+                {
+                    win.Topmost = false;
+                    string? result = await dialog.ShowAsync(win);
+                    if (!string.IsNullOrEmpty(result))
+                    {
+                        await InstallCustomPetAsync(result);
+                    }
+                }
+                finally
+                {
+                    win.Topmost = originalTopmost;
+                }
+            }
+        }
+
+        public async Task InstallCustomPetAsync(string sourceDir)
+        {
+            if (string.IsNullOrEmpty(sourceDir) || !Directory.Exists(sourceDir)) return;
+
+            string petJsonPath = Path.Combine(sourceDir, "pet.json");
+            if (!File.Exists(petJsonPath))
+            {
+                ShowAlert("错误", "所选文件夹中未找到 pet.json，请确认是否为有效的 Codex 宠物包。");
+                return;
+            }
+
+            try
+            {
+                string json = await File.ReadAllTextAsync(petJsonPath);
+                var pet = JsonSerializer.Deserialize<CodexPet>(json, JsonContext.Default.CodexPet);
+                if (pet == null || string.IsNullOrEmpty(pet.Id))
+                {
+                    ShowAlert("错误", "无法解析 pet.json 配置文件。");
+                    return;
+                }
+
+                // Verify spritesheetPath
+                string spritesheetPath = Path.Combine(sourceDir, pet.SpritesheetPath);
+                if (!File.Exists(spritesheetPath))
+                {
+                    ShowAlert("错误", $"未找到精灵图文件 {pet.SpritesheetPath}。");
+                    return;
+                }
+
+                // Copy to AppData pets directory
+                string appDataDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "Tuna"
+                );
+                string petsDir = Path.Combine(appDataDir, "pets");
+                if (!Directory.Exists(petsDir))
+                {
+                    Directory.CreateDirectory(petsDir);
+                }
+
+                string targetDir = Path.Combine(petsDir, pet.Id + ".codex-pet");
+                if (!Directory.Exists(targetDir))
+                {
+                    Directory.CreateDirectory(targetDir);
+                }
+
+                // Copy all files in the directory
+                foreach (string file in Directory.GetFiles(sourceDir))
+                {
+                    string destFile = Path.Combine(targetDir, Path.GetFileName(file));
+                    File.Copy(file, destFile, true);
+                }
+
+                // Reload pets
+                LoadAvailablePets();
+
+                // Select the new pet!
+                SelectedPetId = pet.Id;
+
+                ShowAlert("成功", $"已成功添加宠物 {pet.DisplayName} 并已自动切换！");
+            }
+            catch (Exception ex)
+            {
+                ShowAlert("错误", $"添加宠物失败: {ex.Message}");
+            }
+        }
+
+        private void DeletePet(CodexPet pet)
+        {
+            if (pet == null || !pet.IsDeletable) return;
+
+            ShowConfirm("确认删除", $"确定要删除桌面宠物“{pet.DisplayName}”吗？\n(该宠物包将从数据文件夹中永久删除)", () =>
+            {
+                try
+                {
+                    if (SelectedPetId == pet.Id)
+                    {
+                        SelectedPetId = "douya-chick";
+                    }
+
+                    if (!string.IsNullOrEmpty(pet.FolderPath) && Directory.Exists(pet.FolderPath))
+                    {
+                        Directory.Delete(pet.FolderPath, true);
+                    }
+
+                    LoadAvailablePets();
+                    ShowAlert("删除成功", $"桌面宠物“{pet.DisplayName}”已被移除！");
+                }
+                catch (Exception ex)
+                {
+                    ShowAlert("错误", $"删除宠物失败: {ex.Message}");
+                }
+            });
         }
 
         #endregion

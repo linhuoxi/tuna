@@ -8,5 +8,7 @@
     <type fullname="ExplorerHistoryTracker.ViewModels.RelayCommand" preserve="All" />
     <type fullname="ExplorerHistoryTracker.Converters.RelativeTimeConverter" preserve="All" />
     <type fullname="ExplorerHistoryTracker.Converters.StringEqualsToBooleanConverter" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.FloatBallWindow" preserve="All" />
+    <type fullname="ExplorerHistoryTracker.Models.CodexPet" preserve="All" />
   </assembly>
 </linker>

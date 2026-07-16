@@ -11,6 +11,7 @@
         Title="Tuna" 
         Icon="/Tuna.ico"
         Width="460" Height="630"
+        MinWidth="380" MinHeight="480"
         SystemDecorations="None" 
         Background="Transparent"
         TransparencyLevelHint="Transparent"
@@ -1306,6 +1307,161 @@
                                         </StackPanel>
                                     </Border>
                                 </Grid>
+
+                                <Border Classes="softDivider" />
+
+                                <!-- 桌面宠物 -->
+                                <Grid Classes="fieldRow" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="桌面宠物" Classes="fieldLabel" />
+                                        <TextBlock Text="在桌面显示可拖动的宠物，点击可快速打开面板。（需开启“后台持续运行监测”）" Classes="fieldHint" />
+                                    </StackPanel>
+                                    <Border Grid.Column="1" VerticalAlignment="Center" Background="{DynamicResource BgSecondaryBrush}" CornerRadius="8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="2" ClipToBounds="True" IsEnabled="{Binding IsBackgroundMonitorEnabled}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton GroupName="GrpFloatBall" Classes="segmented" Content="关闭" IsChecked="{Binding IsFloatBallEnabled, Converter={StaticResource InverseBooleanConverter}, Mode=TwoWay}" />
+                                            <Rectangle Classes="segmentedDivider" />
+                                            <RadioButton GroupName="GrpFloatBall" Classes="segmented" Content="开启" IsChecked="{Binding IsFloatBallEnabled, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <Border Classes="softDivider" />
+
+                                <!-- 桌面宠物形象 -->
+                                <StackPanel Spacing="10" IsEnabled="{Binding IsFloatBallEnabled}">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <TextBlock Text="桌面宠物" Classes="fieldLabel" />
+                                            <TextBlock Text="兼容 Codex 桌宠；Tuna 小黄鸡为默认宠物，可添加、切换或删除其他宠物包。" Classes="fieldHint" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                Content="添加自定义"
+                                                Command="{Binding AddCustomPetCommand}"
+                                                Classes="modern"
+                                                Height="28"
+                                                Padding="12,0"
+                                                FontSize="11"
+                                                HorizontalContentAlignment="Center"
+                                                VerticalContentAlignment="Center"
+                                                VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <!-- 宠物列表容器 -->
+                                    <Border Background="{DynamicResource BgSecondaryBrush}"
+                                            BorderBrush="{DynamicResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="12,6">
+                                        <ItemsControl ItemsSource="{Binding AvailablePets}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="models:CodexPet">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,6">
+                                                        <!-- 宠物头像 -->
+                                                        <Panel Grid.Column="0" Width="36" Height="36" Margin="0,0,12,0" VerticalAlignment="Center">
+                                                            <!-- 默认小球 fallback -->
+                                                            <Border Width="24" Height="24"
+                                                                    CornerRadius="12"
+                                                                    Background="{DynamicResource BgCardBrush}"
+                                                                    BorderBrush="{DynamicResource AccentBrush}"
+                                                                    BorderThickness="2"
+                                                                    IsVisible="{Binding Icon, Converter={x:Static ObjectConverters.IsNull}}">
+                                                                <Ellipse Width="6" Height="6" Fill="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+
+                                                            <!-- Codex 像素头像 -->
+                                                            <Image Width="36" Height="36"
+                                                                   Stretch="Uniform"
+                                                                   Source="{Binding Icon}"
+                                                                   IsVisible="{Binding Icon, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                                        </Panel>
+
+                                                        <!-- 宠物名称和描述 -->
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                                <!-- 自定义角标 -->
+                                                                <Border Background="{DynamicResource BorderBrush}"
+                                                                        CornerRadius="4"
+                                                                        Padding="4,1"
+                                                                        IsVisible="{Binding IsCustom}">
+                                                                    <TextBlock Text="自定义" FontSize="9" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Description}"
+                                                                       FontSize="10.5"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="0,2,0,0">
+                                                                <ToolTip.Tip>
+                                                                    <Border MaxWidth="340" Padding="8,5">
+                                                                        <TextBlock Text="{Binding Description}"
+                                                                                   FontSize="11"
+                                                                                   TextWrapping="Wrap"/>
+                                                                    </Border>
+                                                                </ToolTip.Tip>
+                                                            </TextBlock>
+                                                        </StackPanel>
+
+                                                        <!-- 操作按钮 -->
+                                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                            <!-- 删除按钮 -->
+                                                            <Button Content="删除"
+                                                                    Command="{Binding $parent[Window].DataContext.DeletePetCommand}"
+                                                                    CommandParameter="{Binding}"
+                                                                    Classes="danger"
+                                                                    Padding="8,5"
+                                                                    FontSize="10.5"
+                                                                    CornerRadius="6"
+                                                                    IsVisible="{Binding IsDeletable}"/>
+                                                            <!-- 已选择：不可点击 -->
+                                                            <Button Content="已选择"
+                                                                    IsEnabled="False"
+                                                                    Padding="12,5"
+                                                                    FontSize="10.5"
+                                                                    CornerRadius="6"
+                                                                    IsVisible="{Binding IsSelected}"/>
+                                                            <!-- 选择：点击切换 -->
+                                                            <Button Content="选择"
+                                                                    Command="{Binding $parent[Window].DataContext.SelectPetCommand}"
+                                                                    CommandParameter="{Binding Id}"
+                                                                    Classes="modern"
+                                                                    Padding="12,5"
+                                                                    FontSize="10.5"
+                                                                    CornerRadius="6"
+                                                                    IsVisible="{Binding IsNotSelected}"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
+
+                                    <!-- 像素宠物库超链接 -->
+                                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
+                                        <Button Click="PetLibraryButton_Click"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="0"
+                                                HorizontalAlignment="Left"
+                                                Cursor="Hand">
+                                            <TextBlock Text="自定义像素宠物库 ↗"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       TextDecorations="Underline"/>
+                                        </Button>
+                                        <Button Click="CodexPetLibraryButton_Click"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Padding="0"
+                                                HorizontalAlignment="Left"
+                                                Cursor="Hand">
+                                            <TextBlock Text="Codex Pet ↗"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       TextDecorations="Underline"/>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -1431,14 +1587,14 @@
         </Border>
 
         <!-- ================= RESIZE BORDERS & CORNERS ================= -->
-        <Border Width="5" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" Tag="West" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="5" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" Tag="East" PointerPressed="Resize_PointerPressed"/>
-        <Border Height="5" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" Tag="North" PointerPressed="Resize_PointerPressed"/>
-        <Border Height="5" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" Tag="South" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="8" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" Tag="West" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="8" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" Tag="East" PointerPressed="Resize_PointerPressed"/>
+        <Border Height="8" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" Tag="North" PointerPressed="Resize_PointerPressed"/>
+        <Border Height="8" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" Tag="South" PointerPressed="Resize_PointerPressed"/>
 
-        <Border Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" Tag="NorthWest" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" Tag="NorthEast" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" Tag="SouthWest" PointerPressed="Resize_PointerPressed"/>
-        <Border Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" Tag="SouthEast" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" Tag="NorthWest" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" Tag="NorthEast" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="14" Height="14" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" Tag="SouthWest" PointerPressed="Resize_PointerPressed"/>
+        <Border Width="14" Height="14" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" Tag="SouthEast" PointerPressed="Resize_PointerPressed"/>
     </Grid>
 </Window>

@@ -59,6 +59,7 @@
   <ItemGroup>
     <AvaloniaResource Include="Tuna.ico" />
     <AvaloniaResource Include="Tuna.png" />
+    <AvaloniaResource Include="Assets\Pets\**" />
   </ItemGroup>
 
   <!-- NativeAOT trimmer root: preserve types used in reflection-based data binding -->

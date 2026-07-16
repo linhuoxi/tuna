@@ -1,0 +1,83 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ExplorerHistoryTracker.FloatBallWindow"
+        Title="FloatBall"
+        Width="120"
+        Height="120"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        WindowStartupLocation="Manual">
+
+    <Window.Styles>
+        <Style Selector="Border#MainBorder">
+            <Setter Property="Background" Value="{DynamicResource BgCardBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+                    <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border#MainBorder:pointerover">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BgCardBrush}"/>
+            <Setter Property="Opacity" Value="0.95"/>
+        </Style>
+        <Style Selector="Border#MainBorder Ellipse#InnerDot">
+            <Setter Property="Fill" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Fill" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border#MainBorder:pointerover Ellipse#InnerDot">
+            <Setter Property="Fill" Value="{DynamicResource BgCardBrush}"/>
+        </Style>
+    </Window.Styles>
+
+    <Panel HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Panel.ContextMenu>
+            <ContextMenu x:Name="PetContextMenu"
+                         Opening="PetContextMenu_Opening"
+                         Closing="PetContextMenu_Closing">
+                <MenuItem Header="隐藏宠物" Click="HideMenuItem_Click"/>
+                <MenuItem Header="设置" Click="SettingsMenuItem_Click"/>
+                <Separator/>
+                <MenuItem Header="退出程序" Click="ExitMenuItem_Click"/>
+            </ContextMenu>
+        </Panel.ContextMenu>
+
+        <!-- Default Bubble Style -->
+        <Border x:Name="MainBorder"
+                Width="44"
+                Height="44"
+                BorderThickness="2.5"
+                CornerRadius="22"
+                BoxShadow="{DynamicResource WindowNormalShadow}"
+                Cursor="Hand"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <Panel>
+                <!-- Center Dot -->
+                <Ellipse x:Name="InnerDot" Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Panel>
+        </Border>
+
+        <!-- Codex Pet Animation Image Style -->
+        <Image x:Name="PetImage"
+               Width="100"
+               Height="100"
+               Stretch="Uniform"
+               Cursor="Hand"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               IsVisible="False"/>
+    </Panel>
+</Window>

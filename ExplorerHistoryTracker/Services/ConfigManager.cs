@@ -19,6 +19,16 @@ namespace ExplorerHistoryTracker.Services
         public List<FolderHistoryItem> AppAndFileHistory { get; set; } = new();
         public string LastActiveTab { get; set; } = "Recent";
         public string LastActiveFilter { get; set; } = "All";
+        public bool IsFloatBallEnabled { get; set; } = false;
+        public int FloatBallX { get; set; } = -1;
+        public int FloatBallY { get; set; } = -1;
+        // tuna 小黄鸡是始终可用、不可删除的默认桌面宠物。
+        public string SelectedPetId { get; set; } = "douya-chick";
+        // 首次启动时安装全部内置宠物；以后仅确保 tuna 小黄鸡存在。
+        public bool BuiltInPetsInitialized { get; set; }
+        public bool DefaultPetMigratedToDouya { get; set; }
+        public int BuiltInPetAssetVersion { get; set; }
+        public int BuiltInPetCatalogVersion { get; set; }
     }
 
     public class ConfigManager

@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ExplorerHistoryTracker.Models;
 using ExplorerHistoryTracker.Services;
 using ExplorerHistoryTracker.ViewModels;
@@ -32,11 +33,21 @@ namespace ExplorerHistoryTracker
         private const int GWL_WNDPROC = -4;
         private const int WM_ACTIVATE = 0x0006;
         private const int WM_SYSCOMMAND = 0x0112;
+        private const int WM_NCLBUTTONDOWN = 0x00A1;
         private const int WM_SHOWWINDOW = 0x0018;
         private const int WM_WINDOWPOSCHANGING = 0x0046;
         private const int WA_ACTIVE = 1;
+        private const int WA_CLICKACTIVE = 2;
         private const int SC_MINIMIZE = 0xF020;
-        private const int SW_HIDE = 0;
+        private const int HTLEFT = 10;
+        private const int HTRIGHT = 11;
+        private const int HTTOP = 12;
+        private const int HTTOPLEFT = 13;
+        private const int HTTOPRIGHT = 14;
+        private const int HTBOTTOM = 15;
+        private const int HTBOTTOMLEFT = 16;
+        private const int HTBOTTOMRIGHT = 17;
+        public const int SW_HIDE = 0;
         private const uint WM_APP = 0x8000;
         private const uint WM_REPOSITION = WM_APP + 1;
 
@@ -89,6 +100,13 @@ namespace ExplorerHistoryTracker
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ReleaseCapture();
+
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -99,7 +117,7 @@ namespace ExplorerHistoryTracker
 
         [DllImport("user32.dll", EntryPoint = "ShowWindow")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool NativeShowWindow(IntPtr hWnd, int nCmdShow);
+        public static extern bool NativeShowWindow(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -130,44 +148,6 @@ namespace ExplorerHistoryTracker
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr GetForegroundWindow();
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string? lpszWindow);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam);
-
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
-        private const uint WM_SETTEXT = 0x000C;
-        private const int VK_RETURN = 0x0D;
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
-
-        private const uint GW_HWNDNEXT = 2;
-
-        [DllImport("user32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool IsWindowVisible(IntPtr hWnd);
-
-        private const uint GW_CHILD = 5;
-
-        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
-
-        // Standard control ID for the filename combo in Vista+ IFileDialog
-        private const int IDC_FILENAME_COMBO = 0x47C;  // 1148
-
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetProcessWorkingSetSize(IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize);
@@ -197,6 +177,8 @@ namespace ExplorerHistoryTracker
         // ── Re-entry guard for Deactivated → Hide() ──
         // Hide() can trigger another Deactivated; this flag prevents recursive hiding.
         private bool _isHiding;
+        private bool _isDialogNavigationPending;
+        private readonly FileDialogNavigationService _fileDialogNavigation = new();
         private bool _repositionMessagePending;
         private bool _isInternalWakeupShow;
         private bool _externalActivationSyncPending;
@@ -204,10 +186,16 @@ namespace ExplorerHistoryTracker
         private PixelPoint? _showTargetPosition;
         private long _lastExternalShowTick;
         private int _showGeneration;
+        private readonly DispatcherTimer _windowSizeSaveTimer;
         public bool IsWakingUp { get; set; }
 
         public MainWindow()
         {
+            _windowSizeSaveTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(350)
+            };
+            _windowSizeSaveTimer.Tick += WindowSizeSaveTimer_Tick;
             InitializeComponent();
             Resized += MainWindow_Resized;
         }
@@ -215,6 +203,28 @@ namespace ExplorerHistoryTracker
         private void InitializeComponent()
         {
             AvaloniaXamlLoader.Load(this);
+        }
+
+        internal void CaptureDialogTarget(
+            IntPtr candidate,
+            FileDialogActivationSource source)
+        {
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                _fileDialogNavigation.CaptureTarget(candidate, source);
+            }
+            else
+            {
+                // The candidate HWND is captured by the caller before dispatch. Only the
+                // validation/hook registration is moved onto Avalonia's message-loop thread.
+                Dispatcher.UIThread.Post(() =>
+                    _fileDialogNavigation.CaptureTarget(candidate, source));
+            }
+        }
+
+        internal void ClearDialogTarget()
+        {
+            _fileDialogNavigation.ClearTarget();
         }
 
         protected override void OnOpened(EventArgs e)
@@ -259,6 +269,25 @@ namespace ExplorerHistoryTracker
 
         private void OnDeactivated(object? sender, EventArgs e)
         {
+            // Check if the foreground window is still us. If so, ignore the deactivation.
+            try
+            {
+                var handle = this.TryGetPlatformHandle()?.Handle;
+                if (handle != null && handle != IntPtr.Zero)
+                {
+                    IntPtr fgHwnd = GetForegroundWindow();
+                    if (fgHwnd == handle.Value)
+                    {
+                        return;
+                    }
+                }
+            }
+            catch { }
+
+            // A standard file dialog may briefly change activation while it processes the
+            // direct navigation command. Keep Tuna visible until that command is verified.
+            if (_isDialogNavigationPending) return;
+
             // Prevent re-entry while an actual hide is in progress.
             if (_isHiding) return;
 
@@ -281,18 +310,11 @@ namespace ExplorerHistoryTracker
                         return;
                     }
 
-                    if (vm.IsBackgroundMonitorEnabled)
-                    {
-                        HideAndCollect();
-                    }
-                    else
-                    {
-                        Close();
-                    }
+                    App.HideMainWindow();
                 }
                 else
                 {
-                    HideAndCollect();
+                    App.HideMainWindow();
                 }
             }
             finally
@@ -375,8 +397,39 @@ namespace ExplorerHistoryTracker
             }
         }
 
+        protected override void OnClosing(WindowClosingEventArgs e)
+        {
+            SaveWindowSizeNow();
+
+            if (DataContext is MainViewModel vm)
+            {
+                if (vm.IsBackgroundMonitorEnabled)
+                {
+                    e.Cancel = true;
+                    App.HideMainWindow();
+                }
+            }
+            base.OnClosing(e);
+        }
+
         protected override void OnClosed(EventArgs e)
         {
+            _windowSizeSaveTimer.Stop();
+
+            if (_isSubclassed)
+            {
+                try
+                {
+                    var platformHandle = this.TryGetPlatformHandle();
+                    if (platformHandle != null && _originalWndProc != IntPtr.Zero)
+                    {
+                        SetWindowLongPtrCompat(platformHandle.Handle, GWL_WNDPROC, _originalWndProc);
+                    }
+                }
+                catch { }
+                _isSubclassed = false;
+            }
+
             if (_hotkeyRegistered && _hotkeyHwnd != IntPtr.Zero)
             {
                 try { UnregisterHotKey(_hotkeyHwnd, HOTKEY_ID); }
@@ -384,7 +437,20 @@ namespace ExplorerHistoryTracker
                 _hotkeyRegistered = false;
             }
 
+            _fileDialogNavigation.ClearTarget();
             base.OnClosed(e);
+
+            if (DataContext is MainViewModel vmExit)
+            {
+                if (!vmExit.IsBackgroundMonitorEnabled)
+                {
+                    App.Shutdown();
+                }
+            }
+            else
+            {
+                App.Shutdown();
+            }
         }
 
         /// <summary>
@@ -392,11 +458,15 @@ namespace ExplorerHistoryTracker
         /// global hotkey. Mirrors the internal wakeup show sequence used for Quicker so the
         /// panel appears at the cursor and takes focus, whether it was hidden or already visible.
         /// </summary>
-        private void ActivateFromHotkey()
+        private void ActivateFromHotkey(IntPtr activationTarget)
         {
-            // If an activation is already in flight for the same user action, don't double it.
+            // If an activation is already in flight for the same user action, don't double it
+            // or mutate the target session owned by that activation.
             if (IsWakingUp || WasExternallyShownRecently()) return;
 
+            CaptureDialogTarget(
+                activationTarget,
+                FileDialogActivationSource.GlobalHotkey);
             BeginInternalWakeupShow();
             try
             {
@@ -443,21 +513,39 @@ namespace ExplorerHistoryTracker
                 // Hidden global hotkey (Ctrl+Alt+Shift+Win+F13): show & activate at cursor.
                 if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
                 {
+                    // Capture the raw HWND synchronously, before Tuna takes focus. The target
+                    // session is installed later only if this activation is not a duplicate.
+                    IntPtr activationTarget = GetForegroundWindow();
+
                     // Post to the UI thread to avoid re-entering window lifecycle from
                     // inside the raw WndProc callback.
-                    Dispatcher.UIThread.Post(ActivateFromHotkey);
+                    Dispatcher.UIThread.Post(() =>
+                        ActivateFromHotkey(activationTarget));
                     return IntPtr.Zero;
                 }
 
-                // Quicker may activate an HWND that Windows still considers visible. In that
-                // case no WM_SHOWWINDOW is sent, so WA_ACTIVE is the only reliable signal.
-                // WA_CLICKACTIVE is intentionally ignored so clicking the window never moves it.
+                // Capture both programmatic and mouse activation. WA_CLICKACTIVE must update
+                // the target session as well (especially while the panel is kept topmost), but
+                // only WA_ACTIVE runs the external-show reposition sequence.
+                int activationState = (int)(wParam.ToInt64() & 0xFFFF);
                 if (msg == WM_ACTIVATE &&
-                    ((int)(wParam.ToInt64() & 0xFFFF)) == WA_ACTIVE &&
+                    (activationState == WA_ACTIVE || activationState == WA_CLICKACTIVE) &&
                     !_isInternalWakeupShow &&
                     !_isSynchronizingExternalActivation)
                 {
-                    HandleExternalActivation(hWnd, "WM_ACTIVATE");
+                    // When this window is activated, lParam is the window losing activation.
+                    // It is more reliable than enumerating top-level dialogs afterwards.
+                    IntPtr previousWindow = lParam != IntPtr.Zero
+                        ? lParam
+                        : GetForegroundWindow();
+                    CaptureDialogTarget(
+                        previousWindow,
+                        FileDialogActivationSource.ExternalActivate);
+
+                    if (activationState == WA_ACTIVE)
+                    {
+                        HandleExternalActivation(hWnd, "WM_ACTIVATE");
+                    }
                 }
 
                 // Intercept the native placement before Windows paints a window that is
@@ -495,6 +583,9 @@ namespace ExplorerHistoryTracker
                     }
                     else
                     {
+                        CaptureDialogTarget(
+                            GetForegroundWindow(),
+                            FileDialogActivationSource.ExternalShow);
                         HandleExternalActivation(hWnd, "WM_SHOWWINDOW");
                     }
                 }
@@ -537,97 +628,46 @@ namespace ExplorerHistoryTracker
         /// </summary>
         private void PerformHideOrClose()
         {
-            if (DataContext is MainViewModel vm)
+            if (DataContext is MainViewModel vm && vm.IsTopmost)
             {
-                if (vm.IsTopmost)
-                {
-                    // Topmost mode: stay visible, just ensure Normal state
-                    WindowState = WindowState.Normal;
-                    return;
-                }
-
-                if (vm.IsBackgroundMonitorEnabled)
-                {
-                    HideAndCollect();
-                }
-                else
-                {
-                    Close();
-                }
+                WindowState = WindowState.Normal;
+                return;
             }
-            else
-            {
-                HideAndCollect();
-            }
-        }
-
-        private void HideAndCollect()
-        {
-            Hide();
-
-            if (DataContext is MainViewModel vm)
-            {
-                vm.IsWindowVisible = false;
-            }
-
-            // External tools show the HWND without updating Avalonia's visibility state.
-            // If Avalonia already believes the window is hidden, Hide() can be a no-op;
-            // force the native HWND hidden so the next activation starts a real show cycle.
-            try
-            {
-                IntPtr hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-                if (hwnd != IntPtr.Zero)
-                    NativeShowWindow(hwnd, SW_HIDE);
-            }
-            catch {}
-
-            // Defer a cleanup that only runs if the window stays hidden.
-            ScheduleDeferredCleanup();
-        }
-
-        // Cancels a pending deferred cleanup when the window is shown again quickly.
-        private int _cleanupGeneration;
-
-        /// <summary>
-        /// Schedules a memory cleanup a few seconds after the window is hidden.
-        /// If the window is shown again before it fires (the common case), the cleanup is
-        /// skipped entirely, keeping re-open instant. When it does run, it uses a forced
-        /// compacting GC and trims the process working set to minimize memory usage under 20MB.
-        /// </summary>
-        private void ScheduleDeferredCleanup()
-        {
-            int generation = ++_cleanupGeneration;
-            _ = Task.Delay(4000).ContinueWith(_ =>
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    // A newer show/hide happened, or the window is visible again — skip.
-                    if (generation != _cleanupGeneration || IsVisible) return;
-
-                    try
-                    {
-                        IconCache.Clear();
-                        
-                        // Force GC and wait for finalizers to reclaim all unused memory
-                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-                        GC.WaitForPendingFinalizers();
-                        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-
-                        // Trim process working set
-                        IntPtr processHandle = System.Diagnostics.Process.GetCurrentProcess().Handle;
-                        SetProcessWorkingSetSize(processHandle, (IntPtr)(-1), (IntPtr)(-1));
-                    }
-                    catch
-                    {
-                        // Best-effort
-                    }
-                });
-            });
+            Close();
         }
 
         private void MainWindow_Resized(object? sender, WindowResizedEventArgs e)
         {
+            if (DataContext is MainViewModel vm &&
+                double.IsFinite(ClientSize.Width) &&
+                double.IsFinite(ClientSize.Height) &&
+                ClientSize.Width >= MinWidth &&
+                ClientSize.Height >= MinHeight)
+            {
+                vm.WindowWidth = ClientSize.Width;
+                vm.WindowHeight = ClientSize.Height;
+
+                // Avoid writing the config file for every pixel while the user is dragging.
+                _windowSizeSaveTimer.Stop();
+                _windowSizeSaveTimer.Start();
+            }
+        }
+
+        private void WindowSizeSaveTimer_Tick(object? sender, EventArgs e)
+        {
+            _windowSizeSaveTimer.Stop();
             if (DataContext is MainViewModel vm)
+                vm.SaveConfig();
+        }
+
+        private void SaveWindowSizeNow()
+        {
+            _windowSizeSaveTimer.Stop();
+            if (DataContext is MainViewModel vm &&
+                double.IsFinite(ClientSize.Width) &&
+                double.IsFinite(ClientSize.Height) &&
+                ClientSize.Width >= MinWidth &&
+                ClientSize.Height >= MinHeight)
             {
                 vm.WindowWidth = ClientSize.Width;
                 vm.WindowHeight = ClientSize.Height;
@@ -851,7 +891,7 @@ namespace ExplorerHistoryTracker
         /// This bypasses Windows' foreground lock, which normally prevents a background
         /// process from activating its own hidden window without AllowSetForegroundWindow.
         /// </summary>
-        private void ForceActivate()
+        public void ForceActivate()
         {
             try
             {
@@ -925,168 +965,83 @@ namespace ExplorerHistoryTracker
             }
         }
 
-        private void HistoryList_DoubleTapped(object sender, TappedEventArgs e)
+        private async void HistoryList_DoubleTapped(object sender, TappedEventArgs e)
         {
-            if (sender is ListBox listBox && listBox.SelectedItem is FolderHistoryItem item)
+            if (_isDialogNavigationPending || sender is not ListBox)
             {
-                // Try navigating the active file dialog first
-                IntPtr dialogHwnd = FindActiveFileDialog();
-                if (dialogHwnd != IntPtr.Zero && TryNavigateFileDialog(dialogHwnd, item.Path))
+                return;
+            }
+
+            // Resolve the actual card under the double tap. Never reuse a stale selection
+            // when the user double-taps blank space, and do not let child action buttons
+            // bubble into a second navigation action.
+            if (e.Source is not Control sourceControl ||
+                sourceControl.FindAncestorOfType<Button>(true) != null ||
+                sourceControl.FindAncestorOfType<ListBoxItem>(true)?.DataContext
+                    is not FolderHistoryItem item)
+            {
+                return;
+            }
+            e.Handled = true;
+
+            if (!_fileDialogNavigation.HasTarget)
+            {
+                if (DataContext is MainViewModel normalOpenViewModel)
                 {
-                    HideAndCollect();
+                    normalOpenViewModel.OpenFolderCommand.Execute(item);
+                }
+                return;
+            }
+
+            _isDialogNavigationPending = true;
+            try
+            {
+                FileDialogNavigationResult result =
+                    await _fileDialogNavigation.NavigateAsync(item.Path);
+
+                if (result.IsSuccess)
+                {
+                    // Restore the exact captured generation only after navigation has been
+                    // confirmed. A failed identity check keeps the panel visible.
+                    if (_fileDialogNavigation.TryActivateTarget(result))
+                    {
+                        App.HideMainWindow();
+                    }
+                    else if (DataContext is MainViewModel activationViewModel)
+                    {
+                        activationViewModel.ShowAlert(
+                            "目录已切换",
+                            "目录已经切换，但原文件对话框的身份发生变化，面板未自动隐藏。");
+                    }
                     return;
                 }
 
-                // Fallback to normal behavior
-                if (DataContext is MainViewModel vm)
+                if (result.ShouldOpenNormally)
                 {
-                    vm.OpenFolderCommand.Execute(item);
-                }
-            }
-        }
-
-        private IntPtr FindActiveFileDialog()
-        {
-            try
-            {
-                var selfHandle = this.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-                IntPtr found = IntPtr.Zero;
-
-                EnumWindows((hWnd, _) =>
-                {
-                    // Skip our own window
-                    if (hWnd == selfHandle) return true;
-                    if (!IsWindowVisible(hWnd)) return true;
-
-                    var className = new System.Text.StringBuilder(256);
-                    if (GetClassName(hWnd, className, className.Capacity) <= 0) return true;
-                    if (className.ToString() != "#32770") return true;
-
-                    // Modern Vista+ file dialog: has the filename combo with ID 0x47C
-                    IntPtr filenameCombo = GetDlgItem(hWnd, IDC_FILENAME_COMBO);
-                    if (filenameCombo != IntPtr.Zero)
+                    if (DataContext is MainViewModel fallbackViewModel)
                     {
-                        found = hWnd;
-                        return false; // stop enumeration
+                        fallbackViewModel.OpenFolderCommand.Execute(item);
                     }
-
-                    // Legacy file dialog: has ComboBoxEx32 child
-                    IntPtr comboBoxEx = FindChildWindow(hWnd, "ComboBoxEx32");
-                    if (comboBoxEx != IntPtr.Zero)
-                    {
-                        found = hWnd;
-                        return false; // stop enumeration
-                    }
-
-                    return true; // continue
-                }, IntPtr.Zero);
-
-                return found;
-            }
-            catch
-            {
-                // Best-effort
-            }
-            return IntPtr.Zero;
-        }
-
-        private IntPtr FindChildWindow(IntPtr parent, string className)
-        {
-            if (parent == IntPtr.Zero) return IntPtr.Zero;
-
-            try
-            {
-                // Get the first child of the parent window
-                IntPtr child = GetWindow(parent, GW_CHILD);
-                while (child != IntPtr.Zero)
-                {
-                    // Check if this child matches the class name
-                    System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
-                    if (GetClassName(child, sb, sb.Capacity) > 0 && sb.ToString() == className)
-                    {
-                        return child;
-                    }
-
-                    // Recursively search this child's descendants
-                    IntPtr descendent = FindChildWindow(child, className);
-                    if (descendent != IntPtr.Zero)
-                    {
-                        return descendent;
-                    }
-
-                    // Move to the next sibling window
-                    child = GetWindow(child, GW_HWNDNEXT);
-                }
-            }
-            catch
-            {
-                // Best-effort
-            }
-            return IntPtr.Zero;
-        }
-
-        private bool TryNavigateFileDialog(IntPtr hwnd, string path)
-        {
-            if (hwnd == IntPtr.Zero) return false;
-
-            try
-            {
-                // 1. Check class name of target window to verify it's a dialog
-                var className = new System.Text.StringBuilder(256);
-                if (GetClassName(hwnd, className, className.Capacity) == 0) return false;
-                if (className.ToString() != "#32770") return false;
-
-                IntPtr editHwnd = IntPtr.Zero;
-
-                // 2a. Modern Vista+ file dialog: the filename combo has control ID 0x47C
-                IntPtr filenameCombo = GetDlgItem(hwnd, IDC_FILENAME_COMBO);
-                if (filenameCombo != IntPtr.Zero)
-                {
-                    // The combo is a ComboBox; the Edit is its child
-                    editHwnd = FindWindowEx(filenameCombo, IntPtr.Zero, "Edit", null);
-                    // Some dialog variants embed Edit directly
-                    if (editHwnd == IntPtr.Zero)
-                    {
-                        editHwnd = filenameCombo; // The combo itself may accept WM_SETTEXT
-                    }
+                    return;
                 }
 
-                // 2b. Legacy file dialog: ComboBoxEx32 -> ComboBox -> Edit
-                if (editHwnd == IntPtr.Zero)
+                if (DataContext is MainViewModel viewModel)
                 {
-                    IntPtr comboBoxEx = FindChildWindow(hwnd, "ComboBoxEx32");
-                    if (comboBoxEx != IntPtr.Zero)
-                    {
-                        IntPtr comboBox = FindWindowEx(comboBoxEx, IntPtr.Zero, "ComboBox", null);
-                        if (comboBox != IntPtr.Zero)
-                        {
-                            editHwnd = FindWindowEx(comboBox, IntPtr.Zero, "Edit", null);
-                        }
-                    }
+                    viewModel.ShowAlert("目录切换失败", result.Message);
                 }
-
-                if (editHwnd == IntPtr.Zero) return false;
-
-                // 3. Bring the dialog to the foreground so keystrokes are accepted
-                SetForegroundWindow(hwnd);
-
-                // 4. Populate target path
-                SendMessage(editHwnd, WM_SETTEXT, IntPtr.Zero, path);
-
-                // 5. Small delay so the dialog processes the text change
-                System.Threading.Thread.Sleep(50);
-
-                // 6. Send Enter key down and up to initiate navigation
-                const uint WM_KEYDOWN = 0x0100;
-                const uint WM_KEYUP = 0x0101;
-                SendMessage(editHwnd, WM_KEYDOWN, new IntPtr(VK_RETURN), IntPtr.Zero);
-                SendMessage(editHwnd, WM_KEYUP, new IntPtr(VK_RETURN), IntPtr.Zero);
-
-                return true;
             }
-            catch
+            catch (Exception ex)
             {
-                return false;
+                if (DataContext is MainViewModel viewModel)
+                {
+                    viewModel.ShowAlert(
+                        "目录切换失败",
+                        $"操作目标文件对话框时发生错误：\n{ex.Message}");
+                }
+            }
+            finally
+            {
+                _isDialogNavigationPending = false;
             }
         }
 
@@ -1120,28 +1075,64 @@ namespace ExplorerHistoryTracker
 
         private void Resize_PointerPressed(object sender, PointerPressedEventArgs e)
         {
-            if (sender is Border border && border.Tag is string edgeStr && Enum.TryParse<WindowEdge>(edgeStr, out var edge))
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+                return;
+
+            if (sender is Border border &&
+                border.Tag is string edgeStr &&
+                Enum.TryParse<WindowEdge>(edgeStr, out var edge))
             {
+                e.Handled = true;
+
+                if (OperatingSystem.IsWindows())
+                {
+                    IntPtr hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                    int hitTest = edge switch
+                    {
+                        WindowEdge.West => HTLEFT,
+                        WindowEdge.East => HTRIGHT,
+                        WindowEdge.North => HTTOP,
+                        WindowEdge.NorthWest => HTTOPLEFT,
+                        WindowEdge.NorthEast => HTTOPRIGHT,
+                        WindowEdge.South => HTBOTTOM,
+                        WindowEdge.SouthWest => HTBOTTOMLEFT,
+                        WindowEdge.SouthEast => HTBOTTOMRIGHT,
+                        _ => 0
+                    };
+
+                    if (hwnd != IntPtr.Zero && hitTest != 0 && GetCursorPos(out POINT point))
+                    {
+                        int packedPosition =
+                            (point.X & 0xFFFF) |
+                            ((point.Y & 0xFFFF) << 16);
+                        e.Pointer.Capture(null);
+                        ReleaseCapture();
+                        SendMessage(
+                            hwnd,
+                            WM_NCLBUTTONDOWN,
+                            new IntPtr(hitTest),
+                            new IntPtr(packedPosition));
+                        return;
+                    }
+                }
+
                 BeginResizeDrag(edge, e);
             }
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
-            // Closing the panel should hide it when background monitoring is enabled,
-            // including in topmost mode, so the activation shortcut can show it again.
             if (DataContext is MainViewModel vm && vm.IsBackgroundMonitorEnabled)
             {
-                HideAndCollect();
+                App.HideMainWindow();
                 return;
             }
-
             Close();
         }
 
         private void ExitApplicationButton_Click(object sender, RoutedEventArgs e)
         {
-            Environment.Exit(0);
+            App.Shutdown();
         }
 
         private void QQGroupButton_Click(object sender, RoutedEventArgs e)
@@ -1162,6 +1153,32 @@ namespace ExplorerHistoryTracker
             try
             {
                 string url = "https://github.com/linhuoxi/tuna";
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch
+            {
+                // Best-effort
+            }
+        }
+
+        private void PetLibraryButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string url = "https://codex-pet.org/zh/";
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch
+            {
+                // Best-effort
+            }
+        }
+
+        private void CodexPetLibraryButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string url = "https://codexpet.xyz/pets/";
                 Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             }
             catch

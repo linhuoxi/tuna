@@ -15,15 +15,74 @@ $projectName = $csprojFiles[0].BaseName
 
 # ── 停止运行中的实例 ──
 Write-Host "Stopping running instances of $projectName and Tuna..."
-Stop-Process -Name $projectName -Force -ErrorAction SilentlyContinue
-Stop-Process -Name Tuna -Force -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 500
+$runningInstances = Get-Process -Name $projectName, 'Tuna' -ErrorAction SilentlyContinue
+foreach ($process in $runningInstances) {
+    try {
+        Stop-Process -Id $process.Id -Force -ErrorAction Stop
+        [void]$process.WaitForExit(5000)
+    }
+    catch {
+        Write-Warning ("Unable to stop process {0} ({1}): {2}" -f $process.ProcessName, $process.Id, $_)
+    }
+}
+
+# Shut down reusable MSBuild/Roslyn servers before removing intermediate files.
+# They restart automatically on the next restore/build.
+try {
+    & dotnet build-server shutdown | Out-Null
+}
+catch {
+    Write-Warning ("Unable to shut down .NET build servers: {0}" -f $_)
+}
+
+# Stop only stale NativeAOT/linker processes whose command line points into this
+# project. Do not terminate unrelated dotnet/link processes on the machine.
+try {
+    Get-CimInstance Win32_Process -ErrorAction Stop |
+        Where-Object {
+            ($_.Name -eq 'ilc.exe' -or $_.Name -eq 'link.exe' -or $_.Name -eq 'dotnet.exe') -and
+            $_.CommandLine -and
+            $_.CommandLine.IndexOf($scriptDir, [StringComparison]::OrdinalIgnoreCase) -ge 0
+        } |
+        ForEach-Object {
+            Write-Host ("Stopping stale build process {0} ({1})..." -f $_.Name, $_.ProcessId)
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+}
+catch {
+    Write-Warning ("Unable to inspect stale build processes: {0}" -f $_)
+}
+
+function Remove-DirectoryWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [int]$MaxAttempts = 15
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq $MaxAttempts) {
+                throw ("Failed to clean '{0}' after {1} attempts. A process is still locking a build file. Last error: {2}" -f $Path, $MaxAttempts, $_)
+            }
+
+            Write-Host ("Build output is temporarily locked; retrying cleanup ({0}/{1})..." -f $attempt, $MaxAttempts) -ForegroundColor Yellow
+            Start-Sleep -Milliseconds ([Math]::Min(1000, 200 + ($attempt * 100)))
+        }
+    }
+}
 
 # ── 清理旧构建产物 ──
 Write-Host 'Cleaning bin/obj...'
 Get-ChildItem -LiteralPath $scriptDir -Directory -Force |
     Where-Object { $_.Name -eq 'bin' -or $_.Name -eq 'obj' } |
-    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+    ForEach-Object { Remove-DirectoryWithRetry -Path $_.FullName }
 
 # ── 初始化 MSVC C++ 工具链（NativeAOT 需要 link.exe） ──
 function Initialize-MsvcToolchain() {
@@ -167,24 +226,47 @@ $realExeName = $exeFiles[0].BaseName
 Compress-WithUpx $tempExe
 
 # ── 清理最终发布目录，只放 exe ──
-if (Test-Path -LiteralPath $finalPublishDir) {
-    Remove-Item -LiteralPath $finalPublishDir -Recurse -Force
+# Re-resolve these values after UPX. This avoids relying on variables that may be
+# overwritten by external tools or a caller's PowerShell scope.
+$stagedExe = Get-ChildItem -LiteralPath $tempPublishDir -Filter '*.exe' -File |
+    Select-Object -First 1
+if ($null -eq $stagedExe) {
+    throw ('Published exe not found after UPX: ' + $tempPublishDir)
 }
-New-Item -ItemType Directory -Path $finalPublishDir | Out-Null
 
-# 复制 exe 到最终目录
-Copy-Item -LiteralPath $tempExe -Destination $finalPublishDir -Force
+$resolvedParentDir = Split-Path $scriptDir -Parent
+$releaseFolderName = -join @(
+    [char]0x8F6F,
+    [char]0x4EF6,
+    [char]0x53D1,
+    [char]0x5E03
+)
+$resolvedFinalPublishDir = Join-Path -Path $resolvedParentDir -ChildPath $releaseFolderName
+if ([string]::IsNullOrWhiteSpace($resolvedFinalPublishDir)) {
+    throw 'Unable to resolve the final publish directory.'
+}
+
+if (Test-Path -LiteralPath $resolvedFinalPublishDir) {
+    Remove-DirectoryWithRetry -Path $resolvedFinalPublishDir
+}
+New-Item -ItemType Directory -Path $resolvedFinalPublishDir -Force | Out-Null
+
+$publishedExePath = Join-Path -Path $resolvedFinalPublishDir -ChildPath $stagedExe.Name
+Write-Host ('Copying published exe to: ' + $publishedExePath)
+Copy-Item -LiteralPath $stagedExe.FullName -Destination $publishedExePath -Force -ErrorAction Stop
+if (-not (Test-Path -LiteralPath $publishedExePath -PathType Leaf)) {
+    throw ('Published exe copy failed: ' + $publishedExePath)
+}
 
 # ── 清理临时目录 ──
-Remove-Item -LiteralPath $tempPublishDir -Recurse -Force
+Remove-DirectoryWithRetry -Path $tempPublishDir
 
 # ── 报告最终大小 ──
-$finalExe = Join-Path $finalPublishDir "$realExeName.exe"
-$exeInfo = Get-Item -LiteralPath $finalExe
+$exeInfo = Get-Item -LiteralPath $publishedExePath
 $sizeMB = [math]::Round($exeInfo.Length / 1MB, 2)
 Write-Host ''
 Write-Host '========================================='
-Write-Host ('Publish completed: ' + $finalExe)
+Write-Host ('Publish completed: ' + $publishedExePath)
 Write-Host ('Size: ' + $sizeMB + ' MB')
 Write-Host '========================================='
 
@@ -196,6 +278,6 @@ if ($sizeMB -lt 10) {
 
 # ── 启动测试 ──
 if ($env:NO_AUTO_START -ne '1') {
-    Write-Host "Starting $realExeName..."
-    Start-Process -FilePath $finalExe -WorkingDirectory $finalPublishDir | Out-Null
+    Write-Host ('Starting ' + $stagedExe.BaseName + '...')
+    Start-Process -FilePath $publishedExePath -WorkingDirectory $resolvedFinalPublishDir | Out-Null
 }

@@ -1,0 +1,8 @@
+{
+  "id": "douya-chick",
+  "displayName": "tuna小黄鸡",
+  "description": "一只为 Tuna 软件设计、圆滚滚又活泼的原创小黄鸡桌面宠物。",
+  "spriteVersionNumber": 2,
+  "spritesheetPath": "spritesheet.webp",
+  "kind": "object"
+}
